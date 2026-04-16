@@ -16,11 +16,10 @@ RUN npm run build
 # --- Stage 2: Python backend ---
 FROM python:3.12-slim AS runtime
 
-# System deps + Node.js (required for claude CLI)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    nodejs \
-    npm \
+# System deps + Node.js 22 via NodeSource (required for claude CLI)
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # Install claude CLI globally
