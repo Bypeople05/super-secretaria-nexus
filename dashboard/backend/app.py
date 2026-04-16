@@ -316,6 +316,20 @@ with app.app_context():
     seed_roles()
     seed_systems()
 
+    # Diagnose CLI availability at startup
+    import shutil as _shutil, subprocess as _sub
+    for _cli in ("claude", "openclaude"):
+        _p = _shutil.which(_cli)
+        if _p:
+            try:
+                _v = _sub.run([_cli, "--version"], capture_output=True, text=True, timeout=8)
+                print(f"[cli-check] {_cli} found at {_p} | version: {(_v.stdout or _v.stderr).strip()[:80]}")
+            except Exception as _e:
+                print(f"[cli-check] {_cli} found at {_p} but --version failed: {_e}")
+        else:
+            import os as _os
+            print(f"[cli-check] {_cli} NOT FOUND | PATH={_os.environ.get('PATH','')}")
+
     # Auto-setup: create admin user from env vars if DB is empty
     _admin_user = os.environ.get("ADMIN_USERNAME", "").strip()
     _admin_pass = os.environ.get("ADMIN_PASSWORD", "").strip()
