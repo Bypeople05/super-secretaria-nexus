@@ -1,0 +1,885 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.23.0] - 2026-04-15
+
+### Added
+
+- **Chat message rewind + inline edit** — hover over a previous user message and click the pencil to turn it into an inline textarea (Esc cancels, Cmd/Ctrl+Enter commits). Committing truncates the conversation at that point and starts a fresh Agent SDK session, so the model genuinely forgets the rewound turns. JSONL persistence stays append-only: rewinds are recorded as `{type:"rewind", at:<uuid>}` markers applied at read time. Legacy messages without uuids get synthesized deterministic ids on load — zero disk migration (PR #10 by @gomessguii).
+- **Copy button on chat messages** — hover-revealed icon on user and assistant messages copies the text to clipboard with a brief check-icon confirmation. Assistant copy concatenates text blocks and skips tool_use cards (PR #10 by @gomessguii).
+- **Message uuids across the stack** — stable ids now flow through frontend, in-memory session cache, and persistent JSONL logs. Required for rewind; unlocks future features (reactions, per-message pins, etc.).
+
+## [0.22.5] - 2026-04-15
+
+### Added
+
+- **Paste screenshots from clipboard into chat** — Cmd/Ctrl+V on the chat textarea now captures images from the clipboard and routes them through the existing file-attachment pipeline. Pasted images get a `pasted-{ts}.{ext}` filename. Plain-text pastes keep the default browser behavior unchanged (PR #9 by @gomessguii).
+
+## [0.22.4] - 2026-04-15
+
+### Added
+
+- **Subagent tool list inside Agent card** — when an agent spawns a subagent (via the `Agent` tool), the chat card now shows a `N tools` badge in the header and, when expanded, lists every tool the subagent ran (icon + name + 60-char input preview, `max-h-80` with auto-scroll). Original JSON input moved behind a "View input" toggle. Uses the SDK's `parent_tool_use_id` to associate child tool calls with the parent Agent block.
+
+## [0.22.3] - 2026-04-14
+
+### Added
+
+- **TodoWrite renders as checklist in chat** — instead of a JSON dump, the chat now shows ○ pending / ◐ in_progress / ● completed (with strikethrough for done items) plus a `N/M done` counter in the card header. Falls back to the generic JSON view if the input is malformed.
+
+### Changed
+
+- **Trust mode is re-read on every tool call** — toggling Settings → Trust now takes effect immediately for ongoing chat sessions, no restart needed. Previously the value was snapshotted at session start.
+
+## [0.22.2] - 2026-04-14
+
+### Added
+
+- **Trust mode** — new toggle in `/settings` → Trust. When ON, agents auto-approve all tool calls (Write/Edit/Bash/Agent) without prompting. Persists in `config/workspace.yaml` under `chat.trustMode`. Backend endpoints `GET/PATCH /api/settings/chat`; terminal-server reads the flag at every session start and short-circuits both `canUseTool` and `PreToolUse` hook. OFF by default.
+
+### Fixed
+
+- **Custom integrations configurable via drawer** — custom integrations now open the same configuration drawer as core ones, so their env keys and metadata are editable directly from the dashboard.
+- **Preserve SKILL.md body on custom integration PATCH** — editing a custom integration via PATCH no longer clobbers the hand-written body of its SKILL.md. Only the frontmatter metadata is rewritten.
+
+## [0.22.1] - 2026-04-14
+
+### Added
+
+- **Right-click context menu on chat sessions** — Rename (inline edit), Archive/Unarchive, Delete (with confirm). Archived sessions collapse into a "Arquivadas" footer section at the bottom of the list; section is hidden entirely when there are no archived entries. New `PATCH /api/sessions/:id` endpoint accepts `{name?, archived?}`; `archived` field persists to `session-store.js`.
+
+## [0.22.0] - 2026-04-14
+
+### Added
+
+- **Per-tool approval flow in chat** — Read/Glob/Grep/WebFetch/WebSearch/ToolSearch run silently; Write/Edit/Bash/NotebookEdit/Agent prompt the user via inline Allow/Deny cards. Approval now covers **subagents** too (spawned via the Agent tool) via `PreToolUse` hook, not only the main thread.
+- **Global notification bell (topbar/sidebar)** — live WebSocket channel broadcasts `agent_awaiting` and `agent_finished` events from ANY session. Bell icon shows unread count, dropdown lists pending interactions, clicking navigates to the correct session. Persists to localStorage; auto-dismisses when you visit the origin session. Also updates tab title, favicon red-dot, per-session sidebar pulse, and OS notifications when tab is hidden.
+- **Custom Integrations** — Integrations page now separates "Core" and "Custom" sections. Custom integrations live at `.claude/skills/custom-int-{slug}/SKILL.md` (gitignored). New UI: "+ Add custom integration" modal with fields for display name, slug, category, description, and env keys (name + value password inputs; values are upserted to `.env` atomically, names go to SKILL.md). Edit/delete supported via hover buttons on custom cards.
+- **`create-integration` skill** — guides the creation of a custom integration through interview → `evo.post("/api/integrations/custom", ...)`.
+- **Heartbeat costs in Costs page** — `/api/costs` now includes `by_heartbeat` aggregation and updates total KPIs. New "Per Heartbeat Breakdown" table.
+- **Bling and Asaas** — added as core integrations (previously missing from the hardcoded list).
+- **"Powered by EvoNexus" footer links** to evonexus.evolutionfoundation.com.br in shared-workspace views.
+
+### Changed
+
+- **Backup collection strategy** — `backup.py` `collect_files()` now uses a **dynamic filesystem walk** of `workspace/` and `memory/` instead of relying only on `git ls-files --ignored`. Sub-directories containing their own `.git` (workspace/projects/*) are treated as sub-repos and skipped. Captures files that the UI drops into `workspace/project/` that the git rules didn't list as ignored.
+- **Licensing and WhatsApp** — moved from hardcoded core to custom integrations (they live as `custom-int-licensing` and `custom-int-whatsapp` skills, so they appear in the Custom section automatically).
+- **Notification icons** — replaced emoji with lucide-react icons throughout the notification bell.
+
+### Fixed
+
+- **Heartbeat datetime columns on Python 3.10** — `created_at`/`updated_at`/`started_at`/`ended_at`/`consumed_at` in Heartbeat tables changed from `db.DateTime` to `db.String(30)`. The runner inserts ISO strings with trailing `Z`, which Python 3.10 `fromisoformat()` rejects (fixed in 3.11). Prod was throwing 500 on `/api/heartbeats`. No schema migration needed — SQLite is dynamically typed.
+
+## [0.21.0] - 2026-04-14
+
+### Added
+
+- **Heartbeats — proactive agents with 9-step protocol** — agents wake on a schedule (interval, manual, new_task, mention, approval_decision), check state, and decide whether to act. Config in `config/heartbeats.yaml`, CRUD via `/scheduler` UI or `create-heartbeat` / `manage-heartbeats` skills. Atomic checkout prevents double-runs; janitor auto-releases stale locks. See `.claude/rules/heartbeats.md` and `docs/heartbeats.md`.
+- **Goal Cascade — Mission → Project → Goal → Task** — 4-level hierarchy with SQLite triggers that auto-progress goals when tasks are marked done. Goals support `count` / `currency` / `percentage` / `boolean` metric types. Context is auto-injected into agent prompts when `goal_id` is set on a routine, heartbeat, or ticket. UI at `/goals`. See `.claude/rules/goals.md` and `docs/goals.md`.
+- **Tickets — persistent work threads with atomic checkout** — assignable tickets with 6-state workflow (open → in_progress → blocked → review → resolved → closed), comments, activity log, `@agent-slug` mentions that wake heartbeats. Tickets feed the agent inbox in heartbeat step 3. UI at `/issues` with filters, search, bulk actions. See `.claude/rules/tickets.md` and `docs/tickets.md`.
+- **SDK client for internal API (`dashboard/backend/sdk_client.py`)** — `EvoClient` singleton that auto-resolves base URL from `EVONEXUS_API_URL` → `FLASK_PORT` → `localhost:8080` and auto-injects `Authorization: Bearer $DASHBOARD_API_TOKEN`. Skills use `from dashboard.backend.sdk_client import evo` instead of hardcoded curl — works in dev, nginx, and production without changes.
+- **Auto-bind session to created ticket** — when an agent creates a ticket inside a chat session, the terminal-server detects the POST `/api/tickets` response in tool_result output and auto-binds the ticket to the session. Chip in the chat header updates live via WebSocket `ticket_bound` event. Supports JSON and Python-repr output formats.
+- **Ticket source attribution** — `source_agent` and `source_session_id` columns on tickets. Terminal-server injects a `## Runtime context` block into the agent's system prompt with the current agent slug and session id; skills pass them through so the ticket records provenance. Timeline renders "created this ticket via @agent (session #xxxx)"; ticket header has a "Source" field.
+- **Slash-command autocomplete in chat** — typing `/` opens a popup filtered by substring match on skill name, with `↑↓` navigation, `Enter`/`Tab` to insert, `Esc` to close. Mirrors Claude Code terminal UX.
+- **7 new creation/management skills** — `create-ticket`, `create-goal`, `create-heartbeat`, `manage-heartbeats`, `create-agent`, `create-command`, `create-routine`, `schedule-task`, `trigger-registry`, `workspace-share`, `initial-setup` refactored to use `EvoClient`.
+- **19 engineering agents from oh-my-claudecode** — `apex-architect`, `bolt-executor`, `lens-reviewer`, `hawk-debugger`, `grid-tester`, `oath-verifier`, `compass-planner`, `raven-critic`, `zen-simplifier`, `vault-security`, `echo-analyst`, `trail-tracer`, `flow-git`, `scroll-docs`, `canvas-designer`, `prism-scientist`, `scout-explorer`, `probe-qa`, `quill-writer` + 2 native (`helm-conductor`, `mirror-retro`). Total agent count: 17 business + 21 engineering. See [NOTICE.md](./NOTICE.md).
+- **Sessions sidebar badge** — chat sessions bound to a ticket show a `🎫 #xxxxxxxx` chip next to the session name.
+
+### Changed
+
+- **Agents have no `skills:` frontmatter block** — all 38 agents see the full skill catalog dynamically. Adding a new skill no longer requires editing frontmatter across agents.
+- **Skill index auto-discovered** — `.claude/skills/CLAUDE.md` now lists 175+ skills organized by prefix (`dev-`, `fin-`, `hr-`, `int-`, `legal-`, `mkt-`, etc.).
+
+### Fixed
+
+- **`config/heartbeats.yaml` added to `.gitignore`** — user heartbeat config no longer accidentally committed.
+
+## [0.20.6] - 2026-04-13
+
+### Fixed
+
+- **PDF preview in workspace** — PDFs were downloading instead of rendering inline. Added `?inline=1` parameter to the download endpoint that serves with `Content-Disposition: inline` instead of `attachment`
+
+## [0.20.5] - 2026-04-13
+
+### Fixed
+
+- **Flask survives systemd restart** — `pkill` pattern changed from `dashboard/backend.*app.py` to `python.*app.py`. The `cd dashboard/backend` changes CWD but the process cmdline stays `python app.py`, so the old pattern never matched and Flask kept running with stale code across restarts
+
+## [0.20.4] - 2026-04-13
+
+### Fixed
+
+- **Chat connection error feedback** — when terminal-server is offline, the chat UI now shows a red error pill instead of sitting silently. HTTP preflight check before WS connect, disabled input while connecting/errored, `cancelled` flag for clean unmount (PR #7 by @gomessguii)
+- **Terminal-server IPv4 bind** — explicit `0.0.0.0` host so WSL2 localhost forwarding reaches the server from Windows browsers (PR #6 by @gomessguii)
+
+## [0.20.3] - 2026-04-13
+
+### Added
+
+- **File tab context menu** — right-click on workspace file tabs for: Close, Close others, Close all to the left, Close all to the right, Close all
+- **Scheduler in systemd** — `start-services.sh` and `ExecStop` now manage the scheduler process. Restarts properly kill and relaunch the scheduler so `routines.yaml` changes take effect
+
+### Fixed
+
+- **Licensing product slug** — changed `PRODUCT` and `TIER` from `"evonexus"` to `"evo-nexus"` to match the licensing server's product registry. This was causing 400 `INVALID_TIER` on new installations
+- **Licensing error logging** — `_post()` now logs the server's error body (e.g., `MISSING_FIELD: email is required`) instead of the generic `400 Bad Request`
+- **Setup requires email** — the initial setup endpoint now validates that email is provided (required for license registration)
+- **Auto-register skips missing email** — `auto_register_if_needed()` no longer attempts registration if the admin user has no email
+- **Makefile pkill self-kill** — applied `[p]attern` bracket trick to prevent `pkill -f` from matching its own shell process on Linux/WSL (PR #5 by @gomessguii)
+
+## [0.20.2] - 2026-04-13
+
+### Added
+
+- **Durable chat history via JSONL logs** — chat messages are now append-only logged to `ADWs/logs/chat/{agent}_{session}.jsonl`. On session join, if the in-memory history is empty (e.g., after server restart), the JSONL log is read and restored automatically. This makes chat history survive restarts, `sessions.json` cleanups, and 7-day expiry
+
+## [0.20.1] - 2026-04-13
+
+### Added
+
+- **Image generation cost estimates** — each image in the Costs page now shows an estimated USD cost based on model pricing (Gemini Flash $0.039/img, FLUX.2 $0.03/img, GPT-5 Image $0.04/img, etc.). Total image cost shown in section header and included in the "Total (All)" KPI card
+
+## [0.20.0] - 2026-04-13
+
+### Added
+
+- **Workspace folder permissions** — roles can now restrict access to specific workspace folders (finance, marketing, personal, etc.). Three modes: All, Selected (checkbox grid), None. Admin always bypasses. Enforced on all workspace browser endpoints: tree, read, write, create, rename, delete, upload, download, recent, and file share creation
+- **Role editor UI for folder access** — Settings → Roles now has a "Pastas do Workspace" section with radio buttons for mode and a dynamic checkbox grid that scans existing folders from disk
+- **Dynamic folder scan endpoint** — `GET /api/roles/workspace-folders` lists all top-level directories under `workspace/` without hardcoding
+- **SendMessage tool card** — chat UI now renders `SendMessage` tool calls with subagent avatar and description, same as Agent tool cards
+
+### Fixed
+
+- **SQLite auto-migration** — added `ALTER TABLE roles ADD COLUMN workspace_folders_json` to `app.py` startup migration, preventing crash on existing databases
+- **Chat textarea height** — input area resets to single line after sending (carried over from v0.19.1)
+
+## [0.19.1] - 2026-04-13
+
+### Added
+
+- **Subagent cards in chat** — when an agent delegates to another (e.g., Oracle → Sage), the tool card shows the subagent's avatar, name with `@`, description, live progress summary, and completion status
+- **Subagent progress summaries** — enabled `agentProgressSummaries` in the SDK so subagent activity is streamed in real-time
+- **Chat UI screenshot** — added `print-chat.webp` to README, site screenshots carousel, and i18n (en/pt-BR/es)
+
+### Fixed
+
+- **Textarea height reset** — Shift+Enter expanded the input area but it did not shrink back after sending. Now resets to single line on send
+- **Agent SDK dependency** — added `npm install` step to production deploy (the SDK was listed in package.json but not installed on the server)
+
+## [0.19.0] - 2026-04-13
+
+### Added
+
+- **Chat UI for agents** — new chat mode alongside the terminal on every agent page. Uses the Agent SDK (`query()`) with structured streaming: text deltas, tool use cards, thinking indicator. Messages persist across page refreshes via server-side `chatHistory` stored in session-store
+- **Chat session management** — sidebar "Sessions" tab shows all conversations for an agent with preview of last message, sorted by most recent. Create new sessions, switch between them. Each session maintains its own SDK conversation context
+- **Agent identity in chat** — chat mode loads the agent's `.claude/agents/{name}.md` system prompt via `systemPrompt.append` on the Claude Code preset, so agents (Oracle, Clawdia, etc.) respond in character
+- **File attachments in chat** — attach images via paperclip button or drag-and-drop. Files are base64-encoded, saved to temp dir on server, and referenced in the prompt so the agent can `Read` them
+- **Restart All button** — Scheduler page now has a "Restart All" button that triggers `systemctl restart evo-nexus` via a new `/api/services/restart-all` endpoint (systemd deployments only)
+
+### Fixed
+
+- **Chat event routing** — fixed duplicate `type` key bug in server.js where `{ type: 'chat_event', ...msg }` spread overwrote the envelope type with the inner message type, causing the frontend to silently drop all chat events
+- **Session persistence** — `chatHistory` and `sdkSessionId` are now included in session-store serialization/deserialization so chat conversations survive server restarts
+
+## [0.18.8] - 2026-04-13
+
+### Added
+
+- **Multi-terminal tabs per agent** — each agent page now supports multiple terminal sessions with a tab bar. Create new terminals with the `+` button, switch between them, and close sessions individually. Backend adds `GET /api/sessions/by-agent/:name` and `POST /api/sessions/create` endpoints
+- **Recent Agents section** — the Agents page shows the last 6 visited agents at the top for quick access, with avatar, name, command, and running indicator. Tracked via localStorage
+
+### Fixed
+
+- **systemd KillMode=none** — nohup background processes (Flask, terminal-server) were being killed when the oneshot ExecStart script finished. `KillMode=none` prevents systemd from sending SIGTERM to child processes
+- **install-service.sh regenerates start-services.sh** — the copied script had hardcoded `/root/` paths from the original installation, causing `Permission denied` errors when running as the `evonexus` user
+
+## [0.18.7] - 2026-04-12
+
+### Added
+
+- **Dedicated `evonexus` user + systemd service** — VPS setup (`is_remote=True` as root) now automatically creates a dedicated system user, installs uv + Claude Code for it, and configures a systemd service (`evo-nexus`) that auto-starts on boot. Solves the Claude Code restriction that blocks `--dangerously-skip-permissions` as root
+- **`install-service.sh`** — standalone script to install the systemd service on existing installations (`sudo bash install-service.sh`). Safe to re-run
+- **CLI update mode uses systemd** — `npx @evoapi/evo-nexus .` now detects the systemd service and uses `systemctl restart` instead of calling `start-services.sh` directly. Syncs files to the service directory when they differ
+
+### Fixed
+
+- **systemd service type** — uses `Type=oneshot` with `RemainAfterExit=yes` since `start-services.sh` launches background processes with `nohup`
+
+## [0.18.6] - 2026-04-12
+
+### Fixed
+
+- **Share viewer CSS isolation** — shared HTML files now render inside an `<iframe>` with `srcDoc` instead of `dangerouslySetInnerHTML`, preventing Tailwind preflight and global dashboard styles from overriding the shared file's internal CSS (e.g., centered headers appearing left-aligned)
+- **Workspace file manager responsiveness** — FileTree sidebar now collapses into a slide-over drawer on mobile (`<lg` breakpoint) with overlay and toggle button. Toolbar buttons show icons-only on small screens (`<sm`). Selecting a file auto-closes the sidebar on mobile
+- **Makefile `make run` IndentationError** — multiline Python `-c` commands had tab characters from Makefile indentation leaking into the Python source, causing `IndentationError: unexpected indent`. Collapsed to single-line commands
+
+## [0.18.5] - 2026-04-12
+
+### Added
+
+- **Backup retention & auto-cleanup** — configurable via `BACKUP_RETAIN_LOCAL` and `BACKUP_RETAIN_S3` env vars (also editable in dashboard Storage Provider panel). Old backups beyond the limit are auto-deleted after each backup run
+- **`boto3` as default dependency** — included in `pyproject.toml` so new installs have S3 support out of the box
+- **`trigger-registry` and `schedule` skills** — added to Oracle and Clawdia agents so they can create/manage webhook triggers and scheduled tasks
+
+### Changed
+
+- **S3 backup is now S3-only** — when S3 is configured, daily routine and `make backup-s3` upload to S3 and delete the local copy. Local backup is fallback only when S3 is not configured
+- **Dashboard restore runs post-migrate** — restore via the web UI now auto-fixes schema differences (missing columns, corrupted datetimes) after extracting, preventing 500 errors from old backups
+
+## [0.18.4] - 2026-04-12
+
+### Changed
+
+- **`make restore` stops/restarts services** — restore now kills Flask and terminal-server before extracting, then restarts via `start-services.sh` after. Prevents SQLite lock conflicts and ensures auto-migrate runs on the restored database
+- **Setup prompt clarified** — "Type 1 or 2" instead of "Choice" for Dashboard Access, rejects invalid input with clear message
+
+### Fixed
+
+- **SQLite auto-migrate fixes corrupted datetime columns** — on startup, Flask now detects and repairs NULL or non-string `created_at` values in `roles` and `users` tables. Prevents crash after restoring a backup from an older version
+
+## [0.18.3] - 2026-04-12
+
+### Added
+
+- **CLI update mode** — `npx @evoapi/evo-nexus@latest .` now detects existing installations and runs pull + rebuild + restart instead of failing with "directory already exists". Stops services before pull, rebuilds frontend, restarts via `start-services.sh`
+- **Backup import** — new "Importar" button in Backups page to upload external `.zip` backup files into the local backups list. Validates ZIP integrity before accepting
+- **S3-compatible storage support** — added `AWS_ENDPOINT_URL` and `BACKUP_S3_PREFIX` fields to the backup Storage Provider config panel for Cloudflare R2, Backblaze B2, MinIO, and any S3-compatible provider
+
+### Fixed
+
+- **`npx @evoapi/evo-nexus .` on existing repo** — no longer crashes with "fatal: destination path '.' already exists". Auto-detects `.git` + `pyproject.toml` and switches to update flow
+- **S3 client for non-AWS providers** — boto3 client now uses `AWS_ENDPOINT_URL` when set, enabling R2/Backblaze/MinIO connectivity
+
+## [0.18.2] - 2026-04-12
+
+### Added
+
+- **`make uninstall`** — full cleanup command that stops services, removes nginx config, data, deps, and config files. Requires typing "UNINSTALL" to confirm
+- **`make stop`** — stops all EvoNexus services (dashboard + terminal-server)
+
+### Fixed
+
+- **Setup nginx config not persisting** — now removes both `default` and `default.conf`, uses `systemctl reload` instead of `start`, shows clear error with fix command if `nginx -t` fails
+- **CLI showing wrong instructions for VPS** — `npx @evoapi/evo-nexus` now detects remote mode (nginx config present) and shows `./start-services.sh` instead of `make dashboard-app`. Skips redundant frontend build when setup already built it
+- **CLI redundant `npm run build`** — no longer rebuilds frontend after setup already did, avoiding "port already in use" cascade when services were already running
+
+## [0.18.1] - 2026-04-12
+
+### Added
+
+- **AI Image Creator cost tracking in dashboard** — new "Geração de Imagens" section in Costs page showing per-image model, provider, tokens, size, and elapsed time with totals
+- **Image costs API endpoint** — `GET /api/routines/image-costs` reads cost entries from `ADWs/logs/ai-image-creator-costs.json`
+
+### Changed
+
+- **AI Image Creator costs path** — cost logs now saved to `ADWs/logs/ai-image-creator-costs.json` (workspace-level) instead of `.ai-image-creator/costs.json` (project-level)
+
+## [0.18.0] - 2026-04-12
+
+### Added
+
+- **Public share links** — generate public URLs for any workspace file (HTML, markdown, images, video, audio, PDF). Token-based with configurable expiration (1h/24h/7d/30d/permanent). New `FileShare` model, `shares` blueprint, public view page with EvoNexus branding footer, and management page to list/revoke links
+- **Media preview in workspace** — video (mp4/webm/mov), audio (mp3/wav/ogg/aac/flac), and PDF files now render inline in both the workspace file manager and public share pages
+- **Share button in toolbar** — new "Compartilhar" button in FileToolbar with modal for link generation, expiration selector, and clipboard copy
+- **Share Links management page** — new `/shares` route with table view showing all active links, view counts, expiration status, copy and revoke actions
+- **`workspace-share` skill** — conversational skill for Oracle and Clawdia to create/list/revoke share links via natural language
+- **AI Image Creator skill** — generate images via multiple AI models (Gemini, FLUX.2, Riverflow, SeedDream, GPT-5) through Cloudflare AI Gateway or OpenRouter
+- **AI Image Creator integration** — new integration card in dashboard with env var configuration for Cloudflare and OpenRouter keys
+- **Integration env vars API** — scoped `GET/PUT /api/config/env` endpoints for reading and updating `.env` variables from the integration drawer
+
+### Changed
+
+- **Setup wizard hardened** — `uv sync`, `npm install`, and `npm run build` now check exit codes and show clear error messages with log paths instead of silently succeeding on failure
+- **`make dashboard-app` runs `npm install`** — ensures frontend dependencies are up to date after `git pull` before building
+- **AgentTerminal connection** — auto-detects local vs deployed environment for terminal-server WebSocket URL (supports `localhost` and `127.0.0.1` without reverse proxy)
+
+## [0.17.2] - 2026-04-12
+
+### Added
+
+- **Settings page** — new `/settings` page in the dashboard with three tabs: Workspace config (`workspace.yaml`), Routines management (`routines.yaml`), and Reference (CLAUDE.md, Makefile, Commands)
+- **Workspace config UI** — edit workspace name, owner, company, language (20 locales), timezone, and dashboard port
+- **Routines toggle & inline edit** — enable/disable routines with toggle switches, edit schedules inline, grouped by frequency (daily/weekly/monthly)
+- **Settings backend API** — 9 new endpoints for workspace and routine CRUD with audit logging and scheduler reload via sentinel file
+- **API patch method** — `api.patch()` added to frontend API helper
+
+### Changed
+
+- **Config page replaced by Settings** — old `/config` removed, `/config` redirects to `/settings`
+- **Sidebar updated** — "Settings" added as first item in System group
+
+### Removed
+
+- **.env editor** — removed from both frontend and backend (security risk; use terminal for .env changes)
+
+## [0.17.1] - 2026-04-12
+
+### Added
+
+- **i18n support for landing page** — English, Portuguese (BR), and Spanish with language switcher in nav. Preference saved in localStorage.
+- **Per-integration icons in dashboard** — each integration card now shows a distinct icon and color (24 mappings: Stripe purple, Discord blue, WhatsApp green, etc.)
+- **Discord CTA in hero** — "Join 17,000+ developers on Discord" link below main CTAs
+- **Evolution Foundation banner** — persistent top banner linking to evolutionfoundation.com.br
+
+### Changed
+
+- **Landing page copy overhaul** — new headline "Run your business with AI agents", rewritten subtitle listing business areas (finance, marketing, legal, sales, community, engineering), removed em-dashes, fixed buzzwords
+- **Integration count updated** — 18 → 23 integrations (added WhatsApp, LinkedIn, Figma, Amplitude, Intercom, HubSpot, DocuSign, Bling, Asaas; removed Evolution API/Go/CRM from public LP)
+- **Skills count corrected** — 150+ → 175+ across all pages and translations
+- **Background simplified** — removed noise.svg + grid overlay, kept minimal gradient only
+- **Agents showcase link** — "See all 38 agents" now points to /docs/agents/overview instead of broken /agents route
+- **Config page removed from dashboard** — redundant with Integration drawer (from v0.17.0)
+- **Canvas agent memory files** — removed from dashboard/frontend/.claude/ (wrong location)
+
+### Fixed
+
+- **Lucide icon name** — `Github` → `GitFork` (Github not exported in current Lucide version)
+
+## [0.17.0] - 2026-04-12
+
+### Added
+
+- **Multi-file tabs in Workspace** — open multiple files simultaneously with a tab bar. Tabs persist in localStorage across page refreshes. Per-tab dirty state, editor content, and mode tracking. Middle-click to close, unsaved changes confirmation.
+- **Integration config drawer** — integration cards are now clickable, opening a side drawer with integration-specific form fields (masked API keys with reveal toggle). Save writes to `.env` with safe merge. OAuth integrations show "Connect" button instead. Backend test endpoint (`POST /api/integrations/<name>/test`) with real connectivity tests for Stripe, Omie, Evolution API, and Todoist.
+- **Agent-level permissions** — new `agent_access` field on roles with 4 modes: all, by layer (business/engineering), per-agent selection, or none. Locked agents appear with reduced opacity + lock icon in the dashboard. Direct URL access to locked agents shows "Acesso restrito" page. 38 agents mapped across business (17) and engineering (21) layers.
+- **S3 backup browser** — new "Remote Backups (S3)" section on the Backups page lists existing backups in the configured S3 bucket. Download directly from S3. New backend endpoints `GET /api/backups/s3` and `GET /api/backups/s3/<key>/download`.
+- **Backup storage provider config** — collapsible "Storage Provider" panel on the Backups page with S3 Bucket, Access Key, Secret Key, and Region fields (masked with reveal toggle).
+- **Copy file path button** — click "Copiar" in the file path bar to copy the full path to clipboard.
+
+### Changed
+
+- **Tree view preserves state on refresh** — when page reloads, all ancestor folders of the selected file auto-expand to restore the navigation context.
+- **Config page removed** — redundant with the new Integration drawer. `.env` vars for dashboard credentials (DASHBOARD_API_TOKEN) are no longer editable from the frontend (security improvement).
+- **Logo consistency** — Login and Setup pages now use the official `EVO_NEXUS.png` logo instead of a generic inline SVG.
+
+### Fixed
+
+- **DB migration for agent_access** — auto-migrate adds `agent_access_json` column to existing SQLite databases on startup (ALTER TABLE before seed_roles).
+
+## [0.16.0] - 2026-04-12
+
+### Added
+
+- **Multi-provider AI support** — switch between Anthropic (native Claude), OpenAI (GPT-5.x via Codex OAuth or API key), and OpenRouter (200+ models) from the dashboard. Provider toggle with on/off per provider, session blocking when none active, clean env whitelist to prevent stale API key leaks. (PR #4, @NeritonDias)
+- **OpenAI Codex OAuth flow** — browser OAuth + device auth via dashboard endpoints (`auth-start`, `auth-complete`, `device-start`, `device-poll`, `status`, `logout`). Tokens saved in correct Codex format (`~/.codex/auth.json`).
+- **Agent persona enforcement for non-Anthropic providers** — `--system-prompt` replaces default prompt for GPT/Gemini so agents respond in character.
+- **Setup hardening for VPS** — auto-install prerequisites (Node.js 24.x, build-essential, uv, Claude CLI, OpenClaude), Nginx + SSL (certbot default, self-signed fallback), IPv6, firewall, proper sudo/permissions handling, service auto-start with health checks.
+- **YouTube Competitive Analysis skill** (`social-yt-competitive`) — analyze YouTube channels for outlier videos and packaging patterns.
+- **MemPalace worker** (`dashboard/backend/routes/_mempalace_worker.py`) — background worker for Knowledge Base indexing.
+
+### Changed
+
+- **Complete agent-skill audit** — all 38 agents now declare their skills in YAML frontmatter AND in the prompt body ("Skills You Can Use" section for engineering agents). 25/25 `dev-*` skills assigned to agent owners (zero orphans). Business agents expanded: Kai (+3), Sage (+3), Nex (+6), Mentor (+4), Oracle (+6), Atlas (+3). Engineering agents fixed: Raven, Zen, Vault, Trail, Scroll, Prism, Quill, Flow (+frontmatter). Orchestrators Helm and Mirror gained dedicated skill sections.
+- **UI redesign — Setup, Login, Providers pages** — canvas API neural network animated background, solid cards, no glassmorphism/sparkles, professional form UX with autocomplete, accessible toggle switches with `role="switch"`.
+- **Image optimization** — agent avatars PNG→WebP (271MB → 1.7MB, 99.4% reduction), docs/public screenshots PNG→WebP (67-73% reduction).
+- **Onboarding flow restored** — `workspace-status` endpoint now checks if `owner` field is actually filled, not just if file exists.
+- **Dead routes removed** — `/chat` quick actions replaced with Agents and Providers links.
+- **Skill count bumped to 175+** across README, docs, site, rules.
+- **README clone instruction** — added `--depth 1` for faster cloning.
+- **Providers marked as coming soon** — Gemini, Bedrock, Vertex flagged with `coming_soon: true`.
+
+### Fixed
+
+- **Terminal server spread order** — `...options` moved before explicit properties in `startSession` to prevent `agent` being overwritten with `undefined`.
+- **Clean env whitelist** — spawned CLI processes only inherit 22 whitelisted system vars + provider env, preventing stale `OPENAI_API_KEY` leaks.
+- **Root detection** — skips `--dangerously-skip-permissions` for root users.
+- **uv sync as SUDO_USER** — `.venv` symlinks now point to user's Python, not root's.
+- **File ownership** — `chown -R` + `chmod +x .venv/bin/` before starting services.
+
+## [0.15.1] - 2026-04-11
+
+### Changed
+
+- **Brand refresh — new EvoNexus logo** — `public/EVO_NEXUS.png` is now the canonical brand asset. `public/cover.svg` has the old `<text>Evo Nexus</text>` replaced by an embedded base64 `<image>` of the new logo, so the README banner renders the real brand mark in any viewer without external dependencies. Copies of `EVO_NEXUS.png` also live at `site/public/assets/EVO_NEXUS.png` and `dashboard/frontend/public/EVO_NEXUS.png` so the site and dashboard can serve it directly.
+- **`site/src/pages/Home.tsx` — nav header** — the top navigation now shows only the EvoNexus PNG logo (`@assets/EVO_NEXUS.png`). The legacy Evolution logo (`@assets/logo.png`) and the duplicate `<span>Evo</span><span>Nexus</span>` text that sat next to it were both removed from the header — Evolution branding remains on the case-study card and the footer where it belongs.
+- **`dashboard/frontend/src/components/Sidebar.tsx` — sidebar header** — the two-tone `<h1><span>Evo</span><span>Nexus</span></h1>` heading was replaced by `<img src="/EVO_NEXUS.png" className="h-8 w-auto" />`, matching the new brand.
+- **Skill count bumped to 150+ across every source of truth** — `README.md` (4 spots: intro bullet, Key Features list, dashboard table, folder tree), `public/cover.svg` (badge), `.claude/rules/skills.md` (header), `docs/introduction.md`, `docs/architecture.md` (ASCII diagram + evo-skills note), `docs/skills/overview.md`, `docs/getting-started.md`, and `site/src/pages/Home.tsx` (4 spots: hero paragraph, stat card, feature tile, "Skills as Instructions" description). Previous counts of `~137`, `~140`, `137+`, `~130` all normalized to `150+`. `docs/llms-full.txt` regenerated via `make docs-build` to pick up the new numbers.
+
+## [0.15.0] - 2026-04-11
+
+### Added
+
+- **Learning Loop feature** — knowledge retention system based on SM-2 spaced repetition. Four skills: `learn-capture` (extract 1-5 atomic facts from pasted content), `learn-review` (run SM-2 sessions with Again/Hard/Good/Easy grades updating `interval`/`ease` in-place), `learn-quiz` (retrieval-practice question sets, read-only), `learn-stats` (total facts, overdue count, retention rate, active decks, facts added this week). Facts are individual markdown files in `workspace/learning/facts/` with full SM-2 frontmatter (`interval`, `ease`, `reps`, `lapses`, `next_review`). Review history appended to `.state/review-log.jsonl` for audit. All user data gitignored by default — only `workspace/learning/README.md` is committed. Pull-only in v0 (no Telegram push, no Fathom auto-capture — deferred).
+- **`@lumen-learning` agent** — new business-layer agent (17th) dedicated to learning retention. Orchestrates the four `learn-*` skills and keeps separation of concerns clean: `@mentor-courses` creates learning content, `@lumen-learning` makes it stick. Command: `/lumen-learning`. Model: sonnet. Color: yellow.
+- **`learning_weekly` routine** — scheduled for Sundays 09:45 BRT via `ADWs/routines/custom/learning_weekly.py`. Generates a markdown digest in `workspace/daily-logs/YYYY-MM-DD-learning-weekly.md` with overdue facts and retention stats. Read-only — never mutates SM-2 frontmatter. Makefile target: `make learn-weekly`.
+- **Agent avatars in the dashboard** — 35 custom PNG avatars under `dashboard/frontend/public/avatar/` covering all business agents (12) and 19 engineering agents (helm, mirror also now included). New `AgentAvatar` component renders the PNG as a circular image when available, or falls back to a colored circle with the Lucide icon when not. Integrated into the agent list cards (`Agents.tsx`, 56px) and the agent detail page header (`AgentDetail.tsx`, 60px with colored halo).
+- **Agent count bumped across all docs** — README, `docs/introduction.md`, `docs/agents/overview.md`, `docs/architecture.md`, `docs/real-world/evolution-foundation.md`, `docs/dashboard/overview.md`, `docs/guides/initial-setup-skill.md`, `site/src/pages/Home.tsx`, `.claude/rules/agents.md`, `CLAUDE.md` updated from 37 (16 business) → 38 (17 business). `public/cover.svg` text updated from `37 Agents` → `38 Agents`.
+
+### Changed
+
+- **`dashboard/frontend/src/lib/agent-meta.ts`** — expanded from 19 entries to 38. All 21 engineering agents were previously falling through to `DEFAULT_META` (generic `Bot` icon, no slash command badge); each now has a dedicated entry with icon, color, command, label, and avatar path. Business agents `aria-hr`, `zara-cs`, `lex-legal`, `nova-product`, `dex-data`, `helm-conductor`, `mirror-retro` also gained their `avatar` field. `AgentMeta` interface extended with optional `avatar?: string`.
+- **`AgentDetail.tsx` header** — grew from `h-14` to `h-20` to accommodate the 60px avatar with its colored halo to the left of the agent name and command.
+
+## [0.14.1] - 2026-04-11
+
+### Fixed
+
+- **`/api/overview` endpoint** — dropped from ~16s to ~29ms (≈500× faster). `_recent_reports` was rglob'ing the entire `workspace/` tree, which on an active install holds vendored third-party repos under `workspace/projects/` (mcp-dev-brasil, oh-my-claudecode, evoai-services, etc.) — 16.853 of 17.116 MD/HTML files (98.5%) lived there and had nothing to do with "recent reports". The scan now skips top-level `projects/` (vendored repos) and `meetings/` (raw Fathom transcripts), iterates remaining areas, and formats the `date` field from the actual `mtime` instead of `path.split("/")[-1][:10]` (which was returning garbage like `"README.md"`).
+- **Site typecheck errors** — `site/src/pages/Home.tsx` had 3 lucide icons (`MessageSquare`, `GitBranch`, `Database`) passing an invalid `title` prop. Wrapped them in `<span title="...">` to keep the hover tooltip and pass `tsc --noEmit`.
+- **Dashboard frontend build** — `dashboard/frontend/src/pages/Providers.tsx` was importing `type LucideIcon` without using it, which caused `make dashboard-app` to fail with `TS6133`. Unused import removed.
+- **Terminal startup garbage (WIP, 2 attempts included)** — on starting any agent terminal from the dashboard, bytes like `0?1;2c` / `000000` / `^[[0^[[0...` showed up in the prompt and status bar. Root cause is xterm.js auto-replying to terminal queries (DA1 `\x1b[c`, DA2 `\x1b[>c`, DSR `\x1b[5n`/`\x1b[6n`, window ops `\x1b[...t`) via `term.onData`, which the frontend was forwarding to the pty as if it were keyboard input. This release ships two defensive layers — passing `cols`/`rows` upfront on `start_claude` so the pty is born at the right size, and registering CSI handlers via `term.parser.registerCsiHandler({ final: 'c' | 'n' | 't' }, () => true)` to intercept queries at the parser level — plus a regex filter on `onData` as a second line of defense. **The bug is not fully resolved in this release.** Some payloads still slip through (likely via a non-CSI `triggerDataEvent` path that hasn't been pinned down yet). A debug log was added to `AgentTerminal.tsx` to capture the exact bytes in the next iteration.
+
+### Changed
+
+- **Feature folder convention** — `workspace/features/{slug}/` is now `workspace/development/features/{slug}/` across all engineering layer prompts (`.claude/rules/dev-phases.md`, `.claude/agents/compass-planner.md`, `.claude/agents/helm-conductor.md`, `.claude/commands/helm-conductor.md`, `.claude/agents/mirror-retro.md`, `docs/agents/engineering-layer.md`). Keeps all engineering artifacts (features, plans, architecture, reviews, verifications, retros) grouped under one development/ root.
+
+### Docs
+
+- **Multi-provider documentation** — README, `docs/introduction.md`, `docs/getting-started.md`, `docs/reference/env-variables.md`, `docs/dashboard/overview.md` updated with the OpenClaude-based multi-provider story introduced in v0.14.0. New `docs/dashboard/providers.md` documents the Providers page (supported providers, activation flow, security model with CLI + env var allowlists, logout warning). Site landing page replaces the "Full Control" feature card with "Multi-Provider, No Lock-In" highlighting the new capability.
+
+## [0.14.0] - 2026-04-10
+
+### Added
+
+- **`dashboard/terminal-server/`** — lean terminal bridge powering the dashboard's per-agent xterm session. Fork of `vultuk/claude-code-web` stripped down from ~3.500 lines / 158 npm packages to ~440 lines / 74 packages, keeping only what the dashboard consumes: `POST /api/sessions/for-agent`, `GET/DELETE /api/sessions/:id`, and a WebSocket with `join_session` / `start_claude` / `input` / `resize` / `ping` / `stop`. Removed codex & cursor bridges, usage analytics, auth, HTTPS, ngrok, PWA, folder browser, and the entire legacy web UI. Spawns the local `claude` CLI via `node-pty` and persists sessions to `~/.claude-code-web/sessions.json`. New Makefile targets `terminal-logs` / `terminal-stop`. A `postinstall` hook restores the `darwin-arm64`/`darwin-x64` `node-pty` `spawn-helper` executable bit so `posix_spawnp` doesn't fail on fresh installs.
+- **`make bling-auth`** — one-shot OAuth2 bootstrap for the Bling integration. Runs `.claude/skills/int-bling/scripts/bling_auth.py` to capture the initial access + refresh tokens into `.env`; subsequent refreshes are automatic via the skill.
+- **Docs** — new `docs/integrations/bling.md` and `docs/integrations/asaas.md` with endpoint coverage, auth setup, and example calls. `docs/integrations/overview.md` expanded with the two Brazilian integrations.
+- **Frontend** — new `dashboard/frontend/src/lib/agent-meta.ts` centralizing the agent icon/color/command/label metadata used by `Agents.tsx`, `AgentDetail.tsx`, and the refreshed `AgentTerminal.tsx`.
+
+### Changed
+
+- **`int-bling` skill** — upgraded from manual v1 Bearer token to OAuth2 with automatic refresh. Access token expires in 6 hours; the skill now reads `BLING_CLIENT_ID` / `BLING_CLIENT_SECRET` / `BLING_REFRESH_TOKEN` from `.env` and refreshes on 401, persisting the new token pair back to disk. `.env.example` documents the new variables and points to `make bling-auth` for first-time setup.
+- **`.claude/rules/integrations.md`** — Bling row updated to reflect OAuth2 auto-refresh + `make bling-auth`. Asaas row now mentions marketplace split.
+- **`dashboard/frontend/src/App.tsx`, `pages/Agents.tsx`, `pages/AgentDetail.tsx`, `components/AgentTerminal.tsx`** — refactored to consume the new `agent-meta.ts` module and the leaner terminal-server endpoints. Error messages updated from `cc-web` → `terminal-server`.
+- **`Makefile`** — `dashboard-app` target now boots `dashboard/terminal-server/bin/server.js --dev` instead of the old `claude-code-web/bin/cc-web.js`. Helper targets renamed `cc-web-logs` → `terminal-logs`, `cc-web-stop` → `terminal-stop`.
+- **`.gitignore`** — ignores `dashboard/terminal-server/node_modules/` and its `package-lock.json`.
+
+### Fixed
+
+- **Terminal spawn failures on fresh installs** — `node-pty`'s `spawn-helper` prebuild was being extracted without the execute bit on macOS, causing `posix_spawnp failed` when the dashboard tried to start a claude session. Fixed by adding a `postinstall` script that re-applies `chmod +x` on both `darwin-arm64` and `darwin-x64` prebuilds.
+
+## [0.13.3] - 2026-04-10
+
+### Added
+
+- **New skill `int-bling`** — Bling ERP API v3 integration. 10 operations across products (list/create), sales orders (list/create), contacts (list/create, F/J types), fiscal invoices/NF-e (list/create from orders), and stock (get/update by warehouse). Uses OAuth2 Bearer token (`BLING_ACCESS_TOKEN`). Schemas and endpoint coverage derived from the `mcp-dev-brasil` TypeScript reference implementation under `workspace/projects/mcp-dev-brasil/packages/erp/bling/`, complemented by [developer.bling.com.br](https://developer.bling.com.br) for advanced endpoints.
+- **New skill `int-asaas`** — Asaas payment platform API v3 integration. 15 operations across payments (create/get/list, PIX QR code, boleto PDF), customers (create/list with CPF/CNPJ validation), subscriptions (create/list/cancel), financial (balance, transfer), marketplace (subaccount for split payments), and utilities (installments, webhook events). Uses `ASAAS_API_KEY` header auth with `ASAAS_SANDBOX=true` as safe default (sandbox.asaas.com), switchable to production. Enums documented: `billingType` (BOLETO/CREDIT_CARD/PIX/UNDEFINED) and payment `status` (PENDING/RECEIVED/CONFIRMED/OVERDUE/REFUNDED/etc). Schemas derived from `mcp-dev-brasil/packages/payments/asaas/` with Zod validation patterns ported to the skill.
+- **`.env.example`** — new `BLING_ACCESS_TOKEN`, `ASAAS_API_KEY`, and `ASAAS_SANDBOX` entries under dedicated Brazilian ERP/payments sections.
+
+### Changed
+
+- **`.claude/rules/skills.md`** — `int-*` row bumped from 13 → 15, now listing Bling and Asaas alongside Stripe, Omie, and the other integrations.
+- **README + docs** — skill counts updated: ~138 → ~140 total (~113 → ~115 business layer).
+
+## [0.13.2] - 2026-04-10
+
+### Added
+
+- **New skill `prod-activation-plan`** — canonical pattern for producing phased activation plans: single index file at `workspace/development/plans/[C]{plan-name}-{date}.md` + one folder per phase (`fase-1-quick-wins/`, `fase-2-conexoes/`, `fase-3-ciclo-completo/`) + one file per item with a rich template (frontmatter, axis, type, concrete steps, decisions pending, impact, dependencies, risks, suggested agent team, status checklist). Includes agent routing rules for `[ATIVAR]` / `[DECIDIR]` / `[CONSTRUIR NOVO]` / `[EVOLUIR]` item types, and an expansion mode that preserves existing items while appending new ones with a version bump in the history section. Lives at `.claude/skills/prod-activation-plan/SKILL.md`.
+
+### Changed
+
+- **Oracle — Step 6 rewritten to use `prod-activation-plan`** — Oracle no longer invents plan structures on the fly. The canonical flow is now `Oracle (interview) → @compass-planner (content) → prod-activation-plan skill (structure) → Oracle (delivery)`. Added explicit `Step 6a` (delegate content to Compass), `Step 6b` (materialize via skill), and `Step 6c` (handle plan expansions preserving existing files). Oracle prompt now contains an explicit "NEVER invent your own plan structure" directive to prevent drift.
+- **README + `docs/getting-started.md`** — Quick Start callout and Step 5 both point to `/oracle` as the first thing to run after installation, with the 7-step Oracle flow explained, the activation-plan structure documented, and the 3 autonomy paths (Guided / Autonomous / Delegated) surfaced. Skill counts bumped from ~137 → ~138 (prod-* subcategory grew from 9 → 10).
+- **`.claude/rules/skills.md`** — `prod-*` row updated to include `activation-plan` in the inline list and count bumped to 10.
+
+## [0.13.1] - 2026-04-10
+
+### Fixed
+
+- **Dashboard — delete social account now works** — the trash icon on `/integrations` was calling `POST /disconnect/{platform}/{index}`, a route that only exists in the standalone `social-auth` Flask app (port 8765), not in the dashboard backend (port 8080), so clicks silently 404'd. Added `DELETE /api/social-accounts/<platform>/<int:index>` to `dashboard/backend/app.py` reusing `env_manager.delete_account`, and updated `dashboard/frontend/src/pages/Integrations.tsx` to call `api.delete()` and consume the returned `{platforms}` payload in a single round-trip.
+- **YouTube — automatic OAuth token refresh** — `SOCIAL_YOUTUBE_*_ACCESS_TOKEN` expires after ~1h, forcing a manual reconnect through social-auth. The `social-auth` OAuth flow already requested `access_type=offline` + `prompt=consent` and saved `REFRESH_TOKEN`, but `youtube_client.py` never used it. Added `_refresh_access_token(account)` that exchanges the refresh token at `https://oauth2.googleapis.com/token`, persists the new access token to `.env` (`SOCIAL_YOUTUBE_{N}_ACCESS_TOKEN`) and `os.environ`, and made `_api_get` auto-retry once on `HTTP 401` when a refresh token is available. Transparent to all callers (skills, routines, agents). Requires `YOUTUBE_OAUTH_CLIENT_ID` and `YOUTUBE_OAUTH_CLIENT_SECRET` in `.env` (already present for any OAuth-connected account).
+
+## [0.13.0] - 2026-04-10
+
+### Added
+
+- **2 native engineering agents** — bringing the Engineering Layer to **21 agents** (19 derived from oh-my-claudecode + 2 native):
+  - **`helm-conductor`** (sonnet, teal) — cycle orchestration agent. Sequences features, decides "what next?", routes tasks to phase owners, coordinates sprint planning. Does not do the work of any phase itself; it orchestrates.
+  - **`mirror-retro`** (sonnet, silver) — blameless retrospective agent. Reads the full feature folder end-to-end at the close of a feature, sprint, or incident, and produces a structured retro with "what worked / didn't / surprises / lessons / proposed memory updates". Requires explicit user approval before writing to `memory/`.
+- **Canonical 6-phase engineering workflow** — `.claude/rules/dev-phases.md` documents the EvoNexus development lifecycle: **Discovery → Planning → Solutioning → Build → Verify → Retro**. Each phase has an owner, inputs, outputs, exit criteria, and skip conditions. Includes handoff protocol, inherited-context rules, and a feature-skip matrix (typo fixes skip most phases; high-stakes migrations use all 6).
+- **Feature folders as unit of work** — `workspace/features/{feature-slug}/` groups all artifacts of one feature (discovery, PRD, plan, architecture, reviews, verification, retro) in one coherent location. Coexists with the type-based folders in `workspace/development/{plans,reviews,...}/` which remain the canonical location for standalone artifacts.
+- **Oracle redesigned as consulting entry point** — `@oracle` is now the official entry door to EvoNexus. It runs a full 8-step flow: detect workspace state → run `initial-setup` if needed → business discovery interview → delegate capability mapping to `@scout-explorer` → delegate gap analysis to `@echo-analyst` → present the "potential" in business language → delegate plan production to `@compass-planner` → deliver with 3 autonomy paths (guided / autonomous / delegated). Oracle keeps the relationship with the user in a single voice while orchestrating specialist agents for the heavy lifting. Prime directive: the user must never be left with doubts — check-ins are mandatory before any side-effect action and after every substantive response.
+
+### Changed
+
+- **`@compass-planner` now produces PRD + Plan in Phase 2** — for non-trivial feature work, Compass first produces `[C]prd-{feature}.md` (problem, goals, non-goals, user stories, acceptance criteria in Given/When/Then, constraints, open questions) and then derives `[C]plan-{feature}.md` from it. Trivial changes skip the PRD. Handoff chain updated: Compass → Apex (Phase 3) → Bolt (Phase 4), not directly Compass → Bolt for non-trivial work.
+- **`README.md`, `CLAUDE.md`, `docs/introduction.md`, `docs/architecture.md`, `docs/agents/overview.md`, `docs/agents/engineering-layer.md`, `site/src/pages/Home.tsx`, `public/cover.svg`** — agent count updated from 35 → 37 (16 business + 21 engineering). Engineering layer descriptions mention the 2 native additions (Helm, Mirror) and the 6-phase workflow.
+- **`.claude/rules/agents.md`** — Engineering Layer bumped to 21 agents. Helm and Mirror marked with ⭐ as EvoNexus-native (not derived from oh-my-claudecode). Header reference added to `.claude/rules/dev-phases.md` as the canonical workflow.
+- **`docs/agents/engineering-layer.md`** — the "19 Agents" section is now "21 Agents", split into Reasoning (opus/sonnet, 8 agents — Mirror added), Execution (sonnet, 11 agents — Helm added), and Speed (haiku, 2 agents, unchanged). New section "The 6-Phase Workflow" documents the canonical pipeline with phase owners and feature-folder convention.
+- **`dashboard/frontend/src/pages/Agents.tsx`** — `AGENT_META` now includes `helm-conductor` and `mirror-retro` with icons (`Navigation`, `History`), colors, labels, and slash commands. `ENGINEERING_TIERS` updated: Mirror added to `reasoning`, Helm added to `execution`.
+- **`NOTICE.md`** — clarifies that 19 of 21 engineering agents are derived from OMC; Helm and Mirror plus `dev-phases.md` are native EvoNexus additions.
+
+### Documentation
+
+- New canonical workflow doc: `.claude/rules/dev-phases.md` (auto-loaded by engineering agents as they work).
+- Updated `docs/llms-full.txt` (regenerated via `make docs-build`).
+
+## [0.12.0] - 2026-04-10
+
+### Added
+
+- **Engineering Layer (19 agents)** — complete software development team derived from [oh-my-claudecode](https://github.com/yeachan-heo/oh-my-claudecode) (MIT, by **Yeachan Heo**, v4.11.4). The layer is ortogonal to the existing Business Layer (16 agents). EvoNexus now ships with **35 specialized agents** in two layers + custom.
+  - **Reasoning tier (opus, 7 agents):** `apex-architect`, `echo-analyst`, `compass-planner`, `raven-critic`, `lens-reviewer`, `zen-simplifier`, `vault-security`
+  - **Execution tier (sonnet, 10 agents):** `bolt-executor`, `hawk-debugger`, `grid-tester`, `probe-qa`, `oath-verifier`, `trail-tracer`, `flow-git`, `scroll-docs`, `canvas-designer`, `prism-scientist`
+  - **Speed tier (haiku, 2 agents):** `scout-explorer`, `quill-writer`
+- **25 `dev-*` skills** organized in 3 tiers:
+  - **Tier 1 — Core orchestration (15):** `dev-autopilot`, `dev-plan`, `dev-ralplan`, `dev-deep-interview`, `dev-deep-dive`, `dev-external-context`, `dev-trace`, `dev-verify`, `dev-ultraqa`, `dev-visual-verdict`, `dev-ai-slop-cleaner`, `dev-sciomc`, `dev-team`, `dev-ccg`, `dev-ralph`
+  - **Tier 2 — Setup & infra (5):** `dev-mcp-setup`, `dev-deepinit`, `dev-project-session-manager`, `dev-configure-notifications`, `dev-release`
+  - **Tier 3 — Meta utilities (5):** `dev-cancel`, `dev-remember`, `dev-ask`, `dev-learner`, `dev-skillify`
+- **15 dev templates** in `.claude/templates/dev-*.md` — one per primary agent output: `dev-architecture-decision`, `dev-work-plan`, `dev-code-review`, `dev-bug-report`, `dev-verification-report`, `dev-deep-interview-spec`, `dev-security-audit`, `dev-test-strategy`, `dev-trace-report`, `dev-explore-report`, `dev-design-spec`, `dev-analysis-report`, `dev-research-brief`, `dev-critique`, `dev-simplification-report`.
+- **`workspace/development/` folder** — engineering layer working directory with 7 subfolders (`architecture`, `plans`, `specs`, `reviews`, `debug`, `verifications`, `research`) and a `README.md`. Distinct from `workspace/projects/` (active git repos).
+- **`NOTICE.md`** — third-party attribution for `oh-my-claudecode` with full MIT license, version pinned at v4.11.4, modifications listed (renaming, namespace `dev-*`, memory pattern adaptation, runtime stripping).
+- **`docs/agents/engineering-layer.md`** — dedicated documentation page covering tiers, agents, pipelines, working folder, templates, memory pattern, cross-layer handoffs, and attribution.
+- **Two-layer dashboard categorization** — `dashboard/frontend/src/pages/Agents.tsx` now categorizes agents into Business / Engineering (with reasoning/execution/speed tiers) / Custom, with auto-derived slash commands and dynamic icon assignment.
+
+### Changed
+
+- **Slash command naming** — all 35 core agents now use the **full agent name** as the slash command (e.g., `/clawdia-assistant`, `/flux-finance`, `/apex-architect`, `/bolt-executor`) instead of short aliases (`/clawdia`, `/flux`, `/apex`, `/bolt`). The only exception is `/oracle` which is already a single word. The 16 short business commands and the 13 short engineering commands were removed.
+- **`README.md` updated** — agent count (16 → 35), skill count (~130 → ~137), Engineering Layer mention with attribution, two-layer description.
+- **`CLAUDE.md` updated** — Active Projects table now lists "Engineering Layer" as delivered (v0.12.0). Folder Structure includes `workspace/development/`. "What Claude Should Do" rules cover both layers and link to NOTICE.md.
+- **`docs/introduction.md`** — "35 specialized agents in two layers" framing, expanded "Chatbot vs EvoNexus" comparison table including engineering scenarios.
+- **`docs/architecture.md`** — diagram refreshed to show 35 agents in two ortogonal layers, ~137 skills, attribution to Yeachan Heo.
+- **`docs/agents/overview.md`** — Two-layer intro, 19 engineering agents grouped by tier, all 16 business agents updated with full slash commands.
+- **`docs/skills/overview.md`** — engineering layer skills section with all 25 `dev-*` skills grouped by tier; total skill count updated to ~137.
+- **`docs/agents/{16 individual}.md`** — slash commands updated to full names (e.g., `/clawdia` → `/clawdia-assistant`).
+- **`site/src/pages/Home.tsx`** — `35 agents` / `137+ skills` stats, two-layer feature card, "Meet your new team" section now shows both Business Layer (16 cards) and Engineering Layer (19 cards) with full slash commands and attribution link.
+- **`site/public/docs/`** — full mirror sync via `make docs-build`.
+- **`docs/llms-full.txt`** — regenerated with 62 docs (added `engineering-layer.md`).
+- **`.claude/rules/agents.md`** — both layers documented (16 + 19) with cross-layer handoff guidance.
+- **`.claude/rules/skills.md`** — `dev-` category added with all 25 skills listed; total bumped to ~137.
+- **`ROADMAP.md`** — new `v0.12 — Engineering Layer` section marking the deliverable as `[x]` with full agent / skill / template enumeration and recommended pipelines.
+
+### Documentation
+
+- **Engineering Layer attribution** — `NOTICE.md` at repo root + `README.md` Credits & Acknowledgments section + per-agent attribution comments + dedicated `docs/agents/engineering-layer.md`.
+- **Pattern compliance** — all 19 engineering agents follow the EvoNexus standard pattern (rich frontmatter with Examples, Workspace Context, Shared Knowledge Base, Working Folder, Identity, Anti-patterns, Domain, How You Work, Skills You Can Use, Handoffs, Output Format, Continuity). Verified by `@lens-reviewer`, 3 fixes applied (oath-verifier `disallowedTools`, raven-critic and trail-tracer `Skills You Can Use` section).
+
+## [0.11.4] - 2026-04-10
+
+### Changed
+- **Backup excludes reconstructible directories** — `backup.py` now excludes top-level dirs that don't contain user data: `site/`, `backups/`, `.venv/`, `_evo/`, `_evo-output/`. Also expanded `EXCLUDE_DIRS` to cover more cache/build folders (`.next`, `.cache`, `.local`, `build`, `.pytest_cache`, `.ruff_cache`, `.mypy_cache`). Reduces typical backup from ~63k files / 1GB to ~800 files / ~900MB while keeping all user data (workspace, agent-memory, custom skills, dashboard DB).
+- **Custom skill convention unified** — product-specific skills (`int-licensing`, `int-whatsapp`, `prod-licensing-daily/weekly/monthly`, and the 45 `evo-*` skills) renamed to `custom-*` prefix so they're automatically gitignored via the existing `.claude/skills/custom-*` pattern. The `name:` frontmatter field in each `SKILL.md` was updated to match the new folder name (50 skills total).
+- **Agent skill references updated** — `atlas-project`, `dex-data`, `nova-product`, `pulse-community` now reference the `custom-*` skill names instead of the old prefixed names.
+- **`.gitignore` simplified** — removed the 5 explicit per-skill entries; the `.claude/skills/custom-*` pattern covers all custom skills.
+
+## [0.11.3] - 2026-04-09
+
+### Fixed
+- **Stale folder references in docs** — replaced legacy Obsidian-style paths (`01 Daily Logs/`, `02 Projects/`, `05 Financeiro/`, `09 Estrategia/`) with new `workspace/` structure (`workspace/daily-logs/`, `workspace/projects/`, `workspace/finance/`, `workspace/strategy/`) in `CLAUDE.md`, status command, creating-skills/routines/updating guides, ops-vendor-review skill, and `llms-full.txt`.
+
+### Changed
+- **`.gitignore`** — added `config/triggers.yaml` to gitignored configs.
+
+## [0.11.2] - 2026-04-09
+
+### Added
+- **SECURITY.md** — vulnerability disclosure policy with private reporting channels and contributor security guidelines
+
+### Fixed
+- **Command injection in dashboard backend** — replaced all `subprocess.run(..., shell=True)` with argument-list invocations across `systems.py`, `services.py`, and `tasks.py`; added container name validation and path traversal protection
+- **WebSocket authentication bypass** — terminal WebSocket handler now verifies `current_user.is_authenticated` (previously skipped `before_request` middleware)
+- **Code injection in MemPalace mining** — replaced f-string quote interpolation with `repr()` to prevent Python code injection via crafted path/wing values
+- **Path traversal in MemPalace sources** — source paths now validated against home directory and workspace boundaries
+
+## [0.11.1] - 2026-04-09
+
+### Changed
+- **Rebrand OpenClaude → EvoNexus** — full platform rename across ~80 files: docs, dashboard, CLI, site, templates, skills, agents, Docker, env vars (`OPENCLAUDE_PORT` → `EVONEXUS_PORT`), npm package (`@evoapi/evo-nexus`), GitHub repo (`EvolutionAPI/evo-nexus`), cover SVG, and all internal references.
+
+## [0.11.0] - 2026-04-09
+
+### Added
+- **Workspace backup & restore** — new `backup.py` script that exports all gitignored user data (memory, agent-memory, config, dashboard DB, logs, custom agents/commands/templates/routines, `.env`) as a ZIP with manifest. Supports local storage (`backups/`) and S3-compatible cloud buckets. Restore with merge (skip existing) or replace (overwrite) mode.
+- **Daily Backup routine** — core routine (`ADWs/routines/backup.py`) runs at 21:00 daily via scheduler. Pure Python (systematic, no AI, no tokens). Auto-uploads to S3 if `BACKUP_S3_BUCKET` is configured.
+- **Backup dashboard page** — `/backups` page to list, create, download, restore, and delete backups from the browser. Shows S3 config status, backup metadata from manifest, and restore mode selection modal.
+- **Trigger registry** — reactive event triggers (webhook & event-based) that execute skills or routines in response to external events. Supports GitHub, Stripe, Linear, Telegram, Discord, and custom webhooks with HMAC signature validation.
+- **Triggers dashboard page** — `/triggers` page to create, edit, delete, test, enable/disable triggers. Copy webhook URL, regenerate secrets, view execution history.
+- **`trigger-registry` skill** — CLI skill to create, manage, and test triggers.
+- **Resume Claude sessions in chat** — dashboard chat now lists active/resumable Claude sessions with `--resume` support.
+- **Makefile targets** — `make backup`, `make backup-s3`, `make restore`, `make backup-list`, `make backup-daily`.
+- **S3 backup env vars** — `BACKUP_S3_BUCKET`, `BACKUP_S3_PREFIX`, `AWS_ENDPOINT_URL` in `.env.example`.
+
+### Changed
+- **Core routines** — 5 → 6 (Daily Backup added)
+- **Dashboard screenshots** — all page screenshots optimized (50-70% smaller file sizes)
+- **ROUTINES.md** — added Triggers and Daily Backup documentation sections
+- **docs/** — updated core-routines, makefile reference, env-variables reference, dashboard overview
+
+## [0.10.1] - 2026-04-09
+
+### Fixed
+- **Site and docs counts** — updated all references from 9/10 agents to 16, from ~68/~80 skills to ~130, across site Home page, introduction, architecture, getting-started, using-agents, initial-setup, dashboard overview, and evolution-foundation case study
+- **Site Home features** — added Channels, Agent Teams, and Scheduled Tasks to the features grid; updated agent showcase to show all 16 agents
+- **Channels docs in pt-BR** — rewrote `docs/guides/channels.md` and `docs/guides/channels-reference.md` to English (docs should always be in English)
+- **README screenshots** — restored screenshots section using HTML `<img>` tags with consistent sizing (were broken by markdown table layout)
+
+## [0.10.0] - 2026-04-09
+
+### Added
+- **6 new core agents** — Mako (Marketing), Aria (HR/People), Zara (Customer Success), Lex (Legal/Compliance), Nova (Product), Dex (Data/BI). Each with system prompt, slash command, dashboard card with icon and color, and dedicated skills.
+- **~80 new skills** — HR (`hr-*`), Legal (`legal-*`), Ops (`ops-*`), Product Management (`pm-*`), Customer Success (`cs-*`), Data/BI (`data-*`), Marketing (`mkt-*`). Skill count: ~68 → ~180.
+- **Channels** — bidirectional chat bridges that push messages into a running Claude Code session. Discord and iMessage channels added alongside existing Telegram. Each runs as a background screen session.
+- **Channel documentation** — `docs/guides/channels.md` (setup guide for all 3 channels) and `docs/guides/channels-reference.md` (technical reference for building custom channels/webhooks).
+- **Dashboard channels section** — Services page now shows "Channels" as a separate section with Telegram, Discord Channel, and iMessage Channel cards (Start/Stop/Logs).
+- **Agent documentation** — individual doc pages for all 16 agents in `docs/agents/`.
+- **Makefile targets** — `discord-channel`, `discord-channel-stop`, `discord-channel-attach`, `imessage`, `imessage-stop`, `imessage-attach`.
+
+### Changed
+- **Agent count** — 10 → 16 core agents across README, docs, dashboard, and rules
+- **Skill count** — ~68 → ~180 across README, docs, and dashboard
+- **Dashboard AGENT_META** — all 16 agents now have dedicated icons, colors, and command badges
+- **README** — updated architecture diagram, agent list, skill count, dashboard features, and workspace structure
+
+## [0.9.0] - 2026-04-09
+
+### Added
+- **Custom agents** — user-created agents with `custom-` prefix. Gitignored, auto-discovered by dashboard (gray "custom" badge vs green "core" badge). Backend returns `custom`, `color`, `model` fields from frontmatter.
+- **Oracle agent** — 10th core agent. `/oracle` workspace knowledge agent that answers questions about agents, skills, routines, integrations, and configuration by reading the actual documentation. No RAG needed — reads `docs/llms-full.txt` and source files directly.
+- **`create-agent` skill** — conversational interface to create custom agents (name, domain, personality, model, color, memory folder, slash command)
+- **`create-command` skill** — conversational interface to create standalone slash commands for Claude Code
+
+### Changed
+- **Agent count** — 9 → 10 core agents (Oracle added) across README, docs, and rules
+- **Dashboard Agents page** — core/custom badges, dynamic colors from frontmatter for custom agents, separate core/custom counters in stats bar
+- **Documentation** — updated agents overview, creating-agents guide (core vs custom section), skills overview
+
+## [0.8.0] - 2026-04-09
+
+### Added
+- **Scheduled Tasks** — new one-off task scheduling system. Schedule a skill, prompt, or script to run at a specific date/time without creating a full routine. Dashboard page at `/tasks` with create/edit/cancel/run-now/view-result. API CRUD at `/api/tasks`. Scheduler checks pending tasks every 30 seconds.
+- **`schedule-task` skill** — conversational interface to create scheduled tasks ("agendar pra sexta 10h", "schedule this for tomorrow")
+- **Dynamic routine discovery** — `ROUTINE_SCRIPTS` and `SCRIPT_AGENTS` are no longer hardcoded. Agent and script mappings are built dynamically by scanning `ADWs/routines/` scripts and extracting metadata from docstrings (`via AgentName` pattern). New scripts are auto-discovered.
+- **`make run R=<id>`** — generic dynamic runner for any routine (core or custom)
+- **`make list-routines`** — lists all discovered routines with agent, script, and name
+- **Workspace file browser** — reports page replaced with a full file browser that navigates workspace folders
+
+### Changed
+- **Makefile cleaned** — custom routine targets (user-specific) removed from Makefile. Only core routine targets remain (`morning`, `eod`, `memory`, `memory-lint`, `weekly`). Custom routines run via `make run R=<id>`.
+- **`ROUTINES.md`** — expanded with scheduled tasks docs, dynamic discovery, and updated manual execution section
+- **Documentation** — new `docs/routines/scheduled-tasks.md`, updated makefile reference, dashboard overview, creating-routines guide, and skills overview
+
+## [0.7.0] - 2026-04-09
+
+### Added
+- **Systematic routines** — new `run_script()` function in `ADWs/runner.py` for pure Python routines that run without Claude CLI, without AI, without tokens. Same logging/metrics infrastructure, but cost=$0 and duration in seconds instead of minutes.
+- **`create-routine` skill updated** — now asks "AI or systematic?" and generates the correct script pattern. For systematic routines, Claude writes the Python logic once at creation time, then the script runs on its own forever.
+- **Example routine** — `ADWs/routines/examples/log_cleanup.py` demonstrates the systematic pattern (deletes logs older than 30 days)
+- **"systematic" badge** — dashboard Scheduler and Routines pages show a gray "systematic" badge for system routines instead of green `@agent`
+- **Site docs CSS overhaul** — replaced fragile custom marked renderers with CSS-based styling on `.docs-content`. Tables, lists, code blocks, and all markdown elements now render correctly with the dark theme.
+- **OAuth redirect URLs** — documented redirect URIs for YouTube, Instagram, and LinkedIn OAuth setup
+
+### Changed
+- **ROADMAP** — "Agent-less routines" marked as done
+
+## [0.6.1] - 2026-04-09
+
+### Added
+- **Core routines documentation** (`docs/routines/core-routines.md`) — detailed explanation of all 5 core routines: what they do, why they matter, and how they form the daily loop
+- **Memory Lint promoted to core** — moved from `ADWs/routines/custom/` to `ADWs/routines/`, hardcoded in `scheduler.py` (Sunday 09:00). Now 5 core routines instead of 4
+- **Release skill** now syncs screenshots (`public/print-*.png` → `site/public/assets/`) on every release
+
+### Changed
+- **Dashboard pages redesigned** — 12 pages (Audit, Config, Costs, Files, Integrations, Memory, Reports, Roles, Routines, Scheduler, Skills, Systems, Templates, Users) with consistent dark theme and improved UX
+- **Integration count** — 19 → 17 (removed internal-only Licensing and WhatsApp docs from public documentation)
+- **Memory system** — LLM Wiki pattern: ingest propagation, weekly lint, centralized index, and operation log
+
+### Removed
+- **`docs/integrations/licensing.md`** — internal only, not public
+- **`docs/integrations/whatsapp.md`** — internal only, not public
+
+### Fixed
+- **Dashboard build** — removed unused `totalTokens` variable in Costs page that blocked TypeScript compilation
+
+## [0.6.0] - 2026-04-09
+
+### Added
+- **Evolution API skill** (`int-evolution-api`) — 33 commands: instances, messages (text, media, location, contact, buttons, lists, polls), chats, groups, webhooks
+- **Evolution Go skill** (`int-evolution-go`) — 24 commands: instances, messages, reactions, presence
+- **Evo CRM skill** (`int-evo-crm`) — 48 commands: contacts, conversations, messages, inboxes, pipelines, labels
+- **Integration docs** — 3 new guides: `docs/integrations/evolution-api.md`, `evolution-go.md`, `evo-crm.md`
+- **Dashboard integrations** — Evolution API, Evolution Go, and Evo CRM cards on Integrations page
+- **`.env.example`** — added `EVOLUTION_API_URL/KEY`, `EVOLUTION_GO_URL/KEY`, `EVO_CRM_URL/TOKEN`
+
+### Changed
+- **Integration count** — 16 → 17 across README, site, and docs (removed internal-only Licensing and WhatsApp docs)
+- **Community members** — 7,000+ → 17,000+ on site
+- **v0.4 roadmap complete** — all 13 items done, Evolution product skills was the last one
+
+## [0.5.1] - 2026-04-09
+
+### Changed
+- **Docs markdown rendering** — replaced regex parser with `marked` library. Code blocks, ASCII art, and nested formatting now render correctly on the site.
+- **README and site** — `npx @evoapi/evo-nexus` is now the primary install method. Git clone shown as alternative.
+- **Release skill** — `make docs-build` and frontend rebuild are now mandatory on every release (not conditional).
+
+### Fixed
+- **Site /docs navigation** — nested doc pages (e.g., `/docs/guides/creating-routines`) no longer 404. Switched from `useRoute` wildcard to direct URL parsing.
+- **Site route matching** — changed from `/docs/:slug+` to `/docs/*` for reliable wouter matching.
+- **CLI default directory** — `npx @evoapi/evo-nexus` without args now clones into current directory (`.`), not a subfolder.
+- **Site CI build** — added missing `print-agents.png` to site assets.
+- **Docs sync** — site now serves updated docs matching the repo (was stale).
+
+## [0.5.0] - 2026-04-09
+
+### Added
+- **Active agent visualization** — Claude Code hooks (`PreToolUse`, `Stop`) track agent launches in `agent-status.json`. Dashboard polls `/api/agents/active` and shows animated "RUNNING" badges on agent cards and overview.
+- **Agents page redesign** — unique icons and accent colors per agent, slash command badges, memory count pills, status dots, hover glow effects.
+- **Overview page redesign** — stat cards with icons and trend indicators, active agents bar, quick actions row (Morning Briefing, Chat, Costs, GitHub), improved reports and routines tables with relative timestamps.
+- **Claude Code hooks** — `agent-tracker.sh` hook registered in `settings.json` for real-time agent activity tracking.
+- **Project settings.json** — permissions (allow/deny rules), hooks configuration.
+- **Inner-loop commands** — `/status` (workspace status) and `/review` (recent changes + next actions).
+- **Default system: Claude Status** — `seed_systems()` creates Anthropic status page as default external system on first boot.
+- **Public roadmap** — `ROADMAP.md` with community input via GitHub discussions.
+
+### Changed
+- **CLAUDE.md split** — reduced from 263 to 128 lines. Detailed config moved to `.claude/rules/` (agents, integrations, routines, skills) — auto-loaded by Claude Code.
+- **All 9 agent prompts generalized** — removed hardcoded personal references (Omie, Linear, Discord Evolution, Brazilian formats, etc.). User-specific context preserved in `_improvements.md` per agent memory folder.
+- **Rules and commands translated** — all `.claude/rules/` and `.claude/commands/` files translated from Portuguese to English.
+
+## [0.4.1] - 2026-04-09
+
+### Added
+- **Docker Compose for dashboard** — `Dockerfile.dashboard` (multi-stage: node + python) + `docker-compose.yml` with dashboard, telegram, and runner services. `make docker-dashboard` to start.
+- **Dashboard CI** — GitHub Actions workflow builds and pushes dashboard image to `ghcr.io/evolutionapi/evo-nexus/dashboard` on push/release
+- **npm CI** — GitHub Actions workflow publishes CLI to npm on release (requires `NPM_TOKEN` secret)
+
+### Changed
+- **Sidebar reorganized** — 5 collapsible groups (Main, Operations, Data, System, Admin) with collapse state persisted in localStorage
+- **Scheduler removed from docker-compose** — runs embedded in dashboard, not as separate service
+- **`make docker-up` → `make docker-telegram`** — reflects that only Telegram is a separate Docker service
+- **Public roadmap updated** — removed internal Future/Research section, marked completed items
+
+## [0.4.0] - 2026-04-09
+
+### Added
+- **CLI installer** — `npx @evoapi/evo-nexus` clones repo, checks prerequisites, installs deps, runs setup wizard, and builds dashboard
+- **Version indicator in dashboard** — sidebar footer shows current version; `/api/version/check` compares against latest GitHub release with 1h cache
+- **Public roadmap** — `ROADMAP.md` with 4 phases (v0.4 → Future), community input via GitHub discussions
+- **Update guide** — `docs/guides/updating.md` with git pull, Docker, and custom content preservation instructions
+
+### Changed
+- **Privacy-first licensing** — removed heartbeat thread, deactivate endpoint, and shutdown hook. Only initial registration remains (who installed). No monitoring, no kill switch, no telemetry.
+- **Licensing version** — now reads from `pyproject.toml` dynamically instead of hardcoded constant
+
+### Fixed
+- **nginx 403 on `/docs/`** — removed `$uri/` from `try_files` so directory paths fall through to SPA instead of returning Forbidden
+- **`.gitignore` formatting** — `site/lib/` and `mempalace.yaml` were concatenated on one line
+- **User-specific files removed from git** — `mempalace.yaml` and `entities.json` no longer tracked
+
+## [0.3.2] - 2026-04-08
+
+### Added
+- **Docs page on site** (`/docs`) — full documentation viewer with sidebar, search, and markdown rendering
+- **Auto-version system** — `pyproject.toml` is single source of truth, injected into site (Vite `__APP_VERSION__`), dashboard (`/api/version`), and CI (Docker build-arg)
+- **Pre-build docs index** — `scripts/build-docs-index.mjs` generates `docs-index.json` at build time
+- **`/api/version` endpoint** — dashboard serves current version from `pyproject.toml`
+
+### Changed
+- **`make docs-build`** — now also syncs `docs/` to `site/public/docs/`
+- **Docs links** in landing page point to `/docs` (internal route, not dashboard)
+- **Site version badge** — reads from `pyproject.toml` dynamically instead of hardcoded
+
+## [0.3.1] - 2026-04-08
+
+### Added
+- **Landing page** (`site/`) — standalone React + Vite static site, extracted from Replit monorepo
+- **Docker support for site** — multi-stage Dockerfile (node build → nginx serve) + docker-compose
+- **GitHub Actions CI** — workflow builds site image and pushes to `ghcr.io/evolutionapi/evo-nexus/site` on push/release
+- **Docs bundled in site image** — `docs/` copied into site build context automatically
+
+### Changed
+- **`.gitignore` updated** — site tracked in repo (Replit artifacts, node_modules, dist excluded)
+- **Site assets renamed** — clean filenames (`logo.png`, `print-overview.png`, etc.) instead of Replit hashes
+
+## [0.3.0] - 2026-04-08
+
+### Added
+- **Public Documentation** (`/docs`) — full docs site inside the dashboard, accessible without auth
+- **MemPalace** — semantic knowledge base with ChromaDB for code/doc search (optional)
+- **Content search** — docs search now matches inside file content, not just titles
+- **llms-full.txt** — pre-generated plain text with all docs for LLM consumption (`/docs/llms-full.txt`)
+- **23 routine examples** and **21 template examples** shipped with repo
+- **14 documentation screenshots** in `docs/imgs/`
+- **Comprehensive docs** — 28 markdown files across 9 sections (guides, dashboard, agents, skills, routines, integrations, real-world, reference)
+- **Practical usage guides** — how to run routines, invoke agents, create custom skills
+
+### Changed
+- **Unofficial disclaimer** — README, docs, and landing page clearly state "unofficial, not affiliated with Anthropic"
+- **Positioning** — "compatible with Claude Code and other LLM tooling" (not "purpose-built for")
+- **Enterprise-safe language** — "integrates with" instead of "leverages", opens door for multi-provider future
+- **Docs sidebar** — logical section ordering, section icons, content preview in search
+- **llms-full.txt** — served as static pre-generated file (instant load, no on-the-fly concatenation)
+- **i18n** — final cleanup, 18 files translated from Portuguese to English
+
+### Fixed
+- `/docs/llms-full.txt` redirect (was showing docs sidebar with "Loading..." instead of plain text)
+- Screenshots with personal data removed and replaced
+- 10 doc files corrected after full audit
+
+## [0.2.0] - 2026-04-09
+
+### Added
+- **Core vs Custom split** — routines, templates, and skills separated into core (tracked) and custom (gitignored)
+- **Create Routine skill** (`create-routine`) — guides users through creating custom routines step by step
+- **Scheduler embedded in dashboard** — runs automatically with `make dashboard-app`, no separate process
+- **Core/Custom badges** — scheduled routines and templates show green "core" or gray "custom" labels
+- **Custom routines from YAML** — scheduler loads custom routines dynamically from `config/routines.yaml`
+- **.env editor** — edit environment variables directly from the Config page in the dashboard
+- **Auto-discover reports** — Reports page scans entire `workspace/` recursively, no hardcoded paths
+
+### Changed
+- **Routines reorganized** — 4 core routines in `ADWs/routines/`, custom in `ADWs/routines/custom/` (gitignored)
+- **Templates reorganized** — 2 core HTML + 4 core MD templates, custom in `custom/` subfolders (gitignored)
+- **`ADWs/rotinas/` renamed to `ADWs/routines/`** — full English naming
+- **Agent files renamed** — `flux-financeiro` → `flux-finance`, `nex-comercial` → `nex-sales`
+- **59 evo-* skills removed** — Evo Method is a separate project, skills gitignored
+- **Docker removed from Services** — use Systems CRUD for Docker container management
+- **ROUTINES.md rewritten** — generic, documents core vs custom split and YAML config format
+- **scheduler.py rewritten** — only 4 core routines hardcoded, custom loaded from YAML
+- **README updated** — correct agent names (`/clawdia`, `/flux`, `/atlas`, etc.), 4 core routines, ~67 skills
+
+### Removed
+- **ROADMAP.md** from Config page (file no longer exists)
+- **Docker section** from Services page
+- **Specific routine schedules** from scheduler.py (moved to user's `config/routines.yaml`)
+- **Custom routines from git** — 23 scripts moved to gitignored `custom/` directory
+- **Custom templates from git** — 15 HTML + 6 MD templates moved to gitignored `custom/` directories
+
+### Fixed
+- Custom routine scripts `sys.path` adjusted for `custom/` subdirectory (3 levels up for runner)
+- Scheduler parser strips `custom/` prefix for agent mapping
+- `SCRIPT_AGENTS` moved to module level (was inaccessible from `_load_yaml_routines`)
+- Telegram `screen` command removed unsupported `-Logfile` flag
+- Remaining Portuguese translated in skill bodies
+
+## [0.1.1] - 2026-04-08
+
+### Added
+- **Silent Licensing** — automatic registration via Evolution Foundation licensing server
+- **Systems CRUD** — register and manage apps/services from the dashboard
+- **Roles & Permissions** — custom roles with granular permission matrix
+- **Onboarding Skill** (`initial-setup`) — guides new users through the workspace
+- **Screenshots** in README (overview, chat, integrations, costs)
+
+### Changed
+- **English-first codebase** — translated agents, skills, templates, routines, and config
+- **Workspace folders** renamed from PT to EN (`workspace/daily-logs`, etc.)
+- **Setup wizard** simplified — all agents enabled by default
+- **HTML templates** standardized with Evolution Foundation branding
+- **Makefile** auto-detects `uv` or falls back to `python3`
+- All Python dependencies consolidated in `pyproject.toml`
+
+### Removed
+- **Evo Method** (`_evo/`) — separate project
+- **Proprietary skills** — licensing and whatsapp excluded
+- **Portuguese folder names** (01-09) — replaced with `workspace/`
+
+### Fixed
+- 16 bug fixes (scheduler logs, SQLite WAL, auth permissions, dates, etc.)
+
+## [0.1.0] - 2026-04-08
+
+### Added
+- Initial open source release
+- 9 Specialized Agents, ~67 Skills, 4 core routines
+- Web Dashboard with auth, roles, web terminal, service management
+- Integration clients (Stripe, Omie, YouTube, Instagram, LinkedIn, Discord)
+- ADW Runner with token/cost tracking
+- Persistent memory system
+- Setup wizard (CLI + web)

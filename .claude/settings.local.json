@@ -1,0 +1,13 @@
+{
+  "enabledMcpjsonServers": [
+    "linear-server",
+    "canva",
+    "google-calendar",
+    "gmail",
+    "figma",
+    "hubspot",
+    "docusign",
+    "amplitude",
+    "intercom"
+  ]
+}

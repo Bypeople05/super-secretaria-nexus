@@ -1,0 +1,76 @@
+{
+  "active_provider": "anthropic",
+  "providers": {
+    "anthropic": {
+      "name": "Anthropic (Claude nativo)",
+      "description": "Claude Code oficial via Anthropic API",
+      "cli_command": "claude",
+      "env_vars": {},
+      "requires_logout": false
+    },
+    "openrouter": {
+      "name": "OpenRouter",
+      "description": "200+ modelos via OpenRouter (Claude, GPT, Gemini, Llama, etc.)",
+      "cli_command": "openclaude",
+      "env_vars": {
+        "CLAUDE_CODE_USE_OPENAI": "1",
+        "OPENAI_BASE_URL": "",
+        "OPENAI_API_KEY": "",
+        "OPENAI_MODEL": ""
+      },
+      "default_base_url": "https://openrouter.ai/api/v1",
+      "default_model": "anthropic/claude-sonnet-4",
+      "requires_logout": true
+    },
+    "openai": {
+      "name": "OpenAI",
+      "description": "GPT-4.x via API Key ou GPT-5.x via Codex OAuth",
+      "cli_command": "openclaude",
+      "env_vars": {
+        "CLAUDE_CODE_USE_OPENAI": "1",
+        "OPENAI_API_KEY": "",
+        "OPENAI_MODEL": "gpt-5.4"
+      },
+      "default_model": "gpt-4.1",
+      "requires_logout": true
+    },
+    "gemini": {
+      "name": "Google Gemini (em breve)",
+      "description": "Gemini 2.5 Pro/Flash via Google AI",
+      "cli_command": "openclaude",
+      "env_vars": {
+        "CLAUDE_CODE_USE_GEMINI": "1",
+        "GEMINI_API_KEY": "",
+        "GEMINI_MODEL": ""
+      },
+      "default_model": "gemini-2.5-pro",
+      "requires_logout": true,
+      "coming_soon": true
+    },
+    "bedrock": {
+      "name": "AWS Bedrock (em breve)",
+      "description": "Claude via AWS Bedrock",
+      "cli_command": "openclaude",
+      "env_vars": {
+        "CLAUDE_CODE_USE_BEDROCK": "1",
+        "AWS_REGION": "",
+        "AWS_BEARER_TOKEN_BEDROCK": ""
+      },
+      "requires_logout": true,
+      "coming_soon": true
+    },
+    "vertex": {
+      "name": "Google Vertex AI (em breve)",
+      "description": "Claude via Google Cloud Vertex AI",
+      "cli_command": "openclaude",
+      "env_vars": {
+        "CLAUDE_CODE_USE_VERTEX": "1",
+        "ANTHROPIC_VERTEX_PROJECT_ID": "",
+        "CLOUD_ML_REGION": ""
+      },
+      "default_region": "us-east5",
+      "requires_logout": true,
+      "coming_soon": true
+    }
+  }
+}
