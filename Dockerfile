@@ -8,9 +8,10 @@ RUN npm run build
 FROM node:22-slim
 WORKDIR /app
 
-# System deps
+# System deps (ca-certificates required for curl/uv install)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Install claude (Anthropic) and openclaude (all other providers)
