@@ -14,7 +14,7 @@ export interface GlobalNotification {
   read: boolean
 }
 
-const STORAGE_KEY = 'evonexus.notifications.state'
+const STORAGE_KEY = 'supersecretaria.notifications.state'
 const MAX_STORED = 50
 
 function loadFromStorage(): GlobalNotification[] {

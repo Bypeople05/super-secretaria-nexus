@@ -525,7 +525,7 @@ function OracleHeroCard({ agent, isRunning }: { agent: Agent; isRunning: boolean
             Oracle
           </h2>
           <p className="text-[12.5px] text-[#8b949e] leading-snug">
-            Your entry point to EvoNexus. Interviews you, maps workspace capabilities to your pain points, and delivers a phased implementation plan.
+            Your entry point to Super Secretaria. Interviews you, maps workspace capabilities to your pain points, and delivers a phased implementation plan.
           </p>
         </div>
 

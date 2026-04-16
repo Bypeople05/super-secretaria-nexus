@@ -591,7 +591,7 @@ function ReferenceTab() {
 
 // ── Tab: Notifications ──────────────────────────────────────────────────────
 function NotificationsTab() {
-  const STORAGE_KEY = 'evonexus.notifications.enabled'
+  const STORAGE_KEY = 'supersecretaria.notifications.enabled'
   const [enabled, setEnabled] = useState(() => {
     try { return localStorage.getItem(STORAGE_KEY) !== 'false' } catch { return true }
   })

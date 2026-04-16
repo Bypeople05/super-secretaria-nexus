@@ -213,7 +213,7 @@ export default function AgentChat({ agent, sessionId, accentColor = '#00FFA7', e
                 document.hidden &&
                 typeof Notification !== 'undefined' &&
                 Notification.permission === 'granted' &&
-                localStorage.getItem('evonexus.notifications.enabled') !== 'false'
+                localStorage.getItem('supersecretaria.notifications.enabled') !== 'false'
               ) {
                 try {
                   const n = new Notification(`Agent @${agent} is waiting for your approval`, {

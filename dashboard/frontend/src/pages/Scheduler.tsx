@@ -95,7 +95,7 @@ export default function Scheduler() {
   const [restarting, setRestarting] = useState(false)
 
   const handleRestartAll = async () => {
-    if (!confirm('Restart EvoNexus? Dashboard, scheduler, and terminal-server will restart.')) return
+    if (!confirm('Restart Super Secretaria? Dashboard, scheduler, and terminal-server will restart.')) return
     setRestarting(true)
     try {
       await api.post('/services/restart-all')

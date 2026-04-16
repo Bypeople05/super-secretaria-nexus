@@ -260,7 +260,7 @@ export default function ShareView() {
 function PoweredByFooter() {
   return (
     <a
-      href="https://evonexus.evolutionfoundation.com.br/"
+      href="https://agentes.supersecretaria.ai"
       target="_blank"
       rel="noopener noreferrer"
       style={{
@@ -281,9 +281,9 @@ function PoweredByFooter() {
         cursor: 'pointer',
       }}
     >
-      <img src="/EVO_NEXUS.png" alt="EvoNexus" style={{ height: '16px', width: 'auto', opacity: 0.7 }} />
+      <img src="/logo.png" alt="Super Secretaria" style={{ height: '16px', width: 'auto', opacity: 0.7 }} />
       <span style={{ fontSize: '11px', color: 'var(--text-muted, #667085)' }}>
-        Powered by EvoNexus
+        Powered by Super Secretaria
       </span>
     </a>
   )
