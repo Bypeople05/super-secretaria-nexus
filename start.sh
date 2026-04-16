@@ -1,19 +1,16 @@
-#!/bin/bash
+#!/bin/sh
 set -e
 
-# Start terminal-server on port 32352
+# Fix nginx pid file permissions
+mkdir -p /run/nginx
+
+# Start terminal-server on port 32352 (background)
 cd /app/dashboard/terminal-server
 node bin/server.js &
-TERMINAL_PID=$!
 
-# Start nginx (proxies /terminal → 32352, rest → 8081)
-nginx -g "daemon off;" &
-NGINX_PID=$!
+# Start nginx (background, proxies /terminal→32352 and rest→8081)
+nginx
 
-# Start Flask on port 8081
+# Start Flask on port 8081 (foreground — keeps container alive)
 cd /app
-EVONEXUS_PORT=8081 uv run python dashboard/backend/app.py &
-FLASK_PID=$!
-
-# Wait for any process to exit
-wait -n $TERMINAL_PID $NGINX_PID $FLASK_PID
+exec uv run python dashboard/backend/app.py
