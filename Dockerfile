@@ -38,9 +38,9 @@ RUN uv sync
 # nginx config
 COPY nginx.conf /etc/nginx/nginx.conf
 
-# Startup script
+# Startup script (sed removes Windows CRLF line endings)
 COPY start.sh /start.sh
-RUN chmod +x /start.sh
+RUN sed -i 's/\r$//' /start.sh && chmod +x /start.sh
 
 EXPOSE 8080
 CMD ["/start.sh"]
