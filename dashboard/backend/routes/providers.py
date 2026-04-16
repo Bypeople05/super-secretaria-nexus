@@ -84,11 +84,11 @@ def _mask_secret(value: str) -> str:
 
 
 def _run_cli_version(command: str, env: dict | None = None) -> dict:
-    """Run '<command> --version' safely using hardcoded dispatch.
+    """Run '<command> --version' safely using hardcoded dispatch."""
+    path = shutil.which(command)
+    if not path:
+        return {"installed": False, "version": None, "path": None}
 
-    Each branch uses a literal string for the executable so that
-    semgrep/opengrep does not flag it as subprocess injection.
-    """
     run_kwargs = dict(capture_output=True, text=True, timeout=10)
     if env is not None:
         run_kwargs["env"] = env
@@ -102,9 +102,11 @@ def _run_cli_version(command: str, env: dict | None = None) -> dict:
             return {"installed": False, "version": None, "path": None}
 
         version = result.stdout.strip() or result.stderr.strip()
-        return {"installed": True, "version": version, "path": shutil.which(command)}
+        return {"installed": True, "version": version or "installed", "path": path}
     except (subprocess.TimeoutExpired, OSError):
-        return {"installed": False, "version": None, "path": shutil.which(command)}
+        # Binary exists in PATH but --version timed out (e.g. network call in Docker)
+        # Still consider it installed since the binary is present
+        return {"installed": True, "version": "installed", "path": path}
 
 
 def _check_cli(command: str) -> dict:
