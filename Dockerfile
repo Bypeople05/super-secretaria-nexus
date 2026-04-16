@@ -1,4 +1,4 @@
-FROM node:18-slim AS frontend
+FROM node:20-slim AS frontend
 WORKDIR /app/frontend
 COPY dashboard/frontend/package*.json ./
 RUN npm install
