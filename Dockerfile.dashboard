@@ -16,10 +16,15 @@ RUN npm run build
 # --- Stage 2: Python backend ---
 FROM python:3.12-slim AS runtime
 
-# System deps
+# System deps + Node.js (required for claude CLI)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    nodejs \
+    npm \
     && rm -rf /var/lib/apt/lists/*
+
+# Install claude CLI globally
+RUN npm install -g @anthropic-ai/claude-code
 
 # Install uv
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
