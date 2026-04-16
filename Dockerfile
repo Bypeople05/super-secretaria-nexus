@@ -8,22 +8,36 @@ RUN npm run build
 FROM node:22-slim
 WORKDIR /app
 
-# System deps (ca-certificates required for curl/uv install)
+# System deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
+    nginx \
     && rm -rf /var/lib/apt/lists/*
 
-# Install claude (Anthropic) and openclaude (all other providers)
+# Install claude (Anthropic) and openclaude (other providers)
 RUN npm install -g @anthropic-ai/claude-code @gitlawb/openclaude
 
-# Install uv (manages Python 3.12)
+# Install uv (manages Python)
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:$PATH"
+
+# Install terminal-server deps
+COPY dashboard/terminal-server/package*.json ./dashboard/terminal-server/
+RUN cd dashboard/terminal-server && npm install
 
 COPY --from=frontend /app/frontend/dist ./dashboard/frontend/dist
 COPY . .
 
+# Install Python deps
 RUN uv sync
+
+# nginx config
+COPY nginx.conf /etc/nginx/nginx.conf
+
+# Startup script
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
+
 EXPOSE 8080
-CMD ["uv", "run", "python", "dashboard/backend/app.py"]
+CMD ["/start.sh"]
