@@ -315,6 +315,23 @@ with app.app_context():
 
     seed_roles()
     seed_systems()
+
+    # Auto-setup: create admin user from env vars if DB is empty
+    _admin_user = os.environ.get("ADMIN_USERNAME", "").strip()
+    _admin_pass = os.environ.get("ADMIN_PASSWORD", "").strip()
+    _admin_email = os.environ.get("ADMIN_EMAIL", "").strip()
+    if needs_setup() and _admin_user and _admin_pass:
+        _u = User(
+            username=_admin_user,
+            email=_admin_email or None,
+            display_name=_admin_user,
+            role="admin",
+        )
+        _u.set_password(_admin_pass)
+        db.session.add(_u)
+        db.session.commit()
+        print(f"[auto-setup] Admin user '{_admin_user}' created from environment variables.")
+
     # Sync trigger definitions from YAML config
     from routes.triggers import sync_triggers_from_yaml
     sync_triggers_from_yaml()
