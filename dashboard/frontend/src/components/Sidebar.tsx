@@ -102,14 +102,14 @@ function loadCollapsedState(): Record<string, boolean> {
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
     if (stored) return JSON.parse(stored)
-  } catch {}
+  } catch { }
   return {}
 }
 
 function saveCollapsedState(state: Record<string, boolean>) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-  } catch {}
+  } catch { }
 }
 
 const roleBadgeClass: Record<string, string> = {
@@ -128,7 +128,7 @@ export default function Sidebar() {
     fetch('/api/version/check')
       .then((r) => r.json())
       .then((data) => setVersionInfo(data))
-      .catch(() => {})
+      .catch(() => { })
   }, [])
 
   const toggleGroup = useCallback((key: string) => {
@@ -146,12 +146,10 @@ export default function Sidebar() {
       end={item.to === '/'}
       onClick={() => setMobileOpen(false)}
       className={({ isActive }) =>
-        `items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-          item.desktopOnly ? 'hidden lg:flex' : 'flex'
-        } ${
-          isActive
-            ? 'text-[#00FFA7] bg-[#00FFA7]/10 border-l-2 border-[#00FFA7]'
-            : 'text-[#667085] hover:text-[#D0D5DD] hover:bg-white/5 border-l-2 border-transparent'
+        `items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${item.desktopOnly ? 'hidden lg:flex' : 'flex'
+        } ${isActive
+          ? 'text-[#00FFA7] bg-[#00FFA7]/10 border-l-2 border-[#00FFA7]'
+          : 'text-[#667085] hover:text-[#D0D5DD] hover:bg-white/5 border-l-2 border-transparent'
         }`
       }
     >
@@ -190,9 +188,8 @@ export default function Sidebar() {
             </span>
             <ChevronDown
               size={12}
-              className={`text-[#667085] transition-transform duration-200 group-hover:text-[#D0D5DD] ${
-                isCollapsed ? '-rotate-90' : ''
-              }`}
+              className={`text-[#667085] transition-transform duration-200 group-hover:text-[#D0D5DD] ${isCollapsed ? '-rotate-90' : ''
+                }`}
             />
           </button>
         ) : (
@@ -204,9 +201,8 @@ export default function Sidebar() {
         )}
 
         <div
-          className={`overflow-hidden transition-all duration-200 ease-in-out ${
-            group.collapsible && isCollapsed ? 'max-h-0 opacity-0' : 'max-h-96 opacity-100'
-          }`}
+          className={`overflow-hidden transition-all duration-200 ease-in-out ${group.collapsible && isCollapsed ? 'max-h-0 opacity-0' : 'max-h-96 opacity-100'
+            }`}
         >
           <div className="flex flex-col gap-0.5">
             {visibleItems.map(renderLink)}
@@ -219,7 +215,7 @@ export default function Sidebar() {
   const sidebarContent = (
     <>
       <div className="px-5 py-6 flex items-center justify-between">
-        <img src="/EVO_NEXUS.png" alt="EvoNexus" className="h-8 w-auto" />
+        <img src="/logo.png" alt="Super Secretária IA" className="h-8 w-auto" />
         <div className="flex items-center gap-1">
           <NotificationBell />
           <button onClick={() => setMobileOpen(false)} className="lg:hidden p-1 rounded hover:bg-white/10 text-[#667085]">
@@ -237,10 +233,9 @@ export default function Sidebar() {
             to="/docs"
             onClick={() => setMobileOpen(false)}
             className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                isActive
-                  ? 'text-[#00FFA7] bg-[#00FFA7]/10 border-l-2 border-[#00FFA7]'
-                  : 'text-[#667085] hover:text-[#D0D5DD] hover:bg-white/5 border-l-2 border-transparent'
+              `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive
+                ? 'text-[#00FFA7] bg-[#00FFA7]/10 border-l-2 border-[#00FFA7]'
+                : 'text-[#667085] hover:text-[#D0D5DD] hover:bg-white/5 border-l-2 border-transparent'
               }`
             }
           >
@@ -297,12 +292,14 @@ export default function Sidebar() {
       {/* Credits */}
       <div className="px-4 py-3 border-t border-[#344054]/50">
         <a
-          href="https://evolutionfoundation.com.br"
+
+
+          href="https://agentes.supersecretaria.ai"
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center justify-center gap-1.5 text-[10px] text-[#667085] hover:text-[#00FFA7] transition-colors"
         >
-          by <span className="font-semibold text-[#00FFA7]/60">Evolution Foundation</span>
+          by <span className="font-semibold text-[#00E5C4]/60">Super Secretária IA</span>
         </a>
       </div>
     </>
@@ -325,7 +322,7 @@ export default function Sidebar() {
 
       {/* Sidebar */}
       <aside className={`
-        fixed left-0 top-0 bottom-0 w-60 bg-[#0a0f1a] border-r border-[#344054] flex flex-col z-50
+        fixed left-0 top-0 bottom-0 w-60 bg-[#0A0A0A] border-r border-[#1A2E2B] flex flex-col z-50
         transition-transform duration-200 ease-in-out
         lg:translate-x-0
         ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
